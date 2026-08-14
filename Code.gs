@@ -68,13 +68,13 @@ const PHOTO_FOLDER_NAME   = '新商品アイデア_写真';
 // getRange(row, 26) のような数字の直書きをすると、列を1本足しただけで
 // 写真・更新日時などが静かにズレて壊れるため。
 const IDEA_COL = {
-  id: 1, name: 2, catch: 3, author: 4, store: 5, date: 6,
-  status: 7, month: 8, event: 9, categories: 10, tags: 11,
-  yieldQty: 12, yieldUnit: 13, cost: 14, costPer: 15, price: 16, costRate: 17,
-  steps: 18, allergens: 19,
-  kcal: 20, protein: 21, fat: 22, carb: 23, salt: 24,
-  storage: 25, bestBefore: 26, memo: 27,
-  photo1: 28, photo2: 29, updatedAt: 30, updatedBy: 31
+  id: 1, name: 2, catch: 3, store: 4, date: 5,
+  status: 6, month: 7, event: 8, categories: 9, tags: 10,
+  yieldQty: 11, yieldUnit: 12, cost: 13, costPer: 14, price: 15, costRate: 16,
+  steps: 17, allergens: 18,
+  kcal: 19, protein: 20, fat: 21, carb: 22, salt: 23,
+  storage: 24, bestBefore: 25, memo: 26,
+  photo1: 27, photo2: 28, updatedAt: 29, updatedBy: 30
 };
 
 // 分類の軸は4つ。それぞれ役割が違う。
@@ -83,7 +83,7 @@ const IDEA_COL = {
 //   タグ     … 誰でも自由に付けられる横断ラベル（SNS映え／春の定番／低カロリー など）。マスタ無し
 //   イベント … 採用先の催事。マスタで管理
 const IDEA_HEADERS = [
-  'アイデアID', '商品名', 'キャッチコピー', '提案者', '提案店舗', '提案日',
+  'アイデアID', '商品名', 'キャッチコピー', '提案店舗', '提案日',
   'ステータス', '採用月', 'イベント', 'カテゴリ', 'タグ',
   '出来上がり数', '出来上がり単位', '原価合計', '1食あたり原価', '想定売価', '原価率(%)',
   '作り方', 'アレルギー',
@@ -215,8 +215,27 @@ function getIdeaSheet_() {
   if (!sh) {
     sh = ss.insertSheet(IDEA_SHEET_NAME);
     initSheet_(sh, IDEA_HEADERS, IDEA_TEXT_COLS, 1000);
+  } else {
+    migrateIdeaSheet_(sh);
   }
   return sh;
+}
+
+// 「提案者」列を廃止したときの移行。
+// 提案者は更新者（自動記録）と同じ人になることがほとんどで重複していたため列ごと削除した。
+// 既に運用が始まっているシートには古い列構成が残っているので、見つけたら1回だけ削る。
+// 移行済みのシートでは何もしないため、毎回呼んでも安全。
+function migrateIdeaSheet_(sh) {
+  const lastCol = sh.getLastColumn();
+  if (lastCol < 1) return;
+  const header = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(v => String(v).trim());
+  const idx = header.indexOf('提案者');
+  if (idx < 0) return;   // 移行済み
+
+  sh.deleteColumn(idx + 1);   // 右側の列は自動で左へ詰まる
+  sh.getRange(1, 1, 1, IDEA_HEADERS.length).setValues([IDEA_HEADERS]);
+  const rows = Math.max(sh.getMaxRows() - 1, 1);
+  IDEA_TEXT_COLS.forEach(col => sh.getRange(2, col, rows, 1).setNumberFormat('@'));
 }
 
 function getMaterialSheet_() {
@@ -340,7 +359,6 @@ function rowToIdea_(row, rowNum) {
     id: cell_(row, IDEA_COL.id),
     name: cell_(row, IDEA_COL.name),
     catch: cell_(row, IDEA_COL.catch),
-    author: cell_(row, IDEA_COL.author),
     store: cell_(row, IDEA_COL.store),
     date: cell_(row, IDEA_COL.date),
     status: cell_(row, IDEA_COL.status) || STATUS_OPTIONS[0],
@@ -378,7 +396,6 @@ function ideaToRow_(id, data, costs, photo1, photo2, updatedAt) {
   set(IDEA_COL.id, id);
   set(IDEA_COL.name, String(data.name || '').trim());
   set(IDEA_COL.catch, data.catch || '');
-  set(IDEA_COL.author, String(data.author || '').trim());
   set(IDEA_COL.store, String(data.store || '').trim());
   set(IDEA_COL.date, data.date || todayStr_());
   set(IDEA_COL.status, data.status || STATUS_OPTIONS[0]);
@@ -406,7 +423,7 @@ function ideaToRow_(id, data, costs, photo1, photo2, updatedAt) {
   set(IDEA_COL.photo1, photo1 || '');
   set(IDEA_COL.photo2, photo2 || '');
   set(IDEA_COL.updatedAt, updatedAt);
-  set(IDEA_COL.updatedBy, String(data.updatedBy || data.author || '').trim());
+  set(IDEA_COL.updatedBy, String(data.updatedBy || '').trim());
 
   return row;
 }
@@ -724,7 +741,6 @@ function deleteIdea_(id) {
 
 function validateIdeaInput_(data) {
   if (!data || !String(data.name || '').trim())   throw new Error('商品名を入力してください');
-  if (!String(data.author || '').trim())          throw new Error('提案者を入力してください');
   if (!String(data.store || '').trim())           throw new Error('提案店舗を選択してください');
   if (data.status && STATUS_OPTIONS.indexOf(data.status) < 0) {
     throw new Error('不正なステータスです: ' + data.status);

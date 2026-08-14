@@ -89,6 +89,13 @@ img{max-width:100%;display:block}
 .card-body{padding:.7rem .8rem .8rem;display:flex;flex-direction:column;gap:.4rem;flex:1}
 .card-name{font-size:.95rem;font-weight:700;line-height:1.35}
 .card-catch{font-size:.75rem;color:var(--ink-muted);line-height:1.4}
+/* 検討メモはカードでは4行までに切って、続きは詳細で読ませる。
+   高さが揃わないとカードの並びがガタつくため line-clamp で固定する */
+.card-memo{font-size:.75rem;color:var(--ink);line-height:1.55;white-space:pre-wrap;
+  background:var(--bg);border-radius:7px;padding:.4rem .55rem;overflow:hidden;
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;line-clamp:4;
+  /* -webkit-box が効かない古い端末ブラウザ向けの保険。4行分＋上下paddingで頭打ちにする */
+  max-height:calc(1.55em * 4 + .8rem)}
 .card-meta{font-size:.7rem;color:var(--ink-faint);display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;margin-top:auto}
 .card-cost{display:flex;gap:.9rem;border-top:1px solid var(--line);padding-top:.5rem;margin-top:.15rem}
 .card-cost div{font-size:.68rem;color:var(--ink-faint);font-weight:600}
@@ -294,7 +301,7 @@ img{max-width:100%;display:block}
           <span class="filt-lbl">検索</span>
           <div class="search">
             <span>🔍</span>
-            <input id="fQ" type="search" placeholder="商品名・提案者・材料名・メモ">
+            <input id="fQ" type="search" placeholder="商品名・店舗・メモ・材料名">
           </div>
           <button id="fReset" class="btn btn-ghost btn-sm">クリア</button>
         </div>
@@ -313,7 +320,6 @@ img{max-width:100%;display:block}
     <div class="fgrid c2">
       <div class="f"><label>商品名<span class="req">*</span></label><input id="i-name" placeholder="例：柚子胡椒からあげ"></div>
       <div class="f"><label>キャッチコピー</label><input id="i-catch" placeholder="例：ピリッと爽やか、九州の定番"></div>
-      <div class="f"><label>提案者<span class="req">*</span></label><input id="i-author" placeholder="例：田中"></div>
       <div class="f"><label>提案店舗<span class="req">*</span></label><select id="i-store"></select></div>
     </div>
   </div>
@@ -513,7 +519,7 @@ var DRIVE_THUMB_BASE = 'https://drive.google.com/thumbnail?id=';
 // 状態
 // ============================================================
 var LS_PASSCODE = 'idea_passcode';
-var LS_ME       = 'idea_me';       // 自分の名前。提案者・更新者の初期値に使う
+var LS_ME       = 'idea_me';       // 自分の名前。シートの「更新者」に記録する
 var LS_FILTER   = 'idea_filter';   // 絞り込みの選択状態
 
 var PASSCODE = '';
@@ -796,7 +802,7 @@ function filtered(){
     if(F.cats.length && !F.cats.every(function(c){ return (i.categories||[]).indexOf(c) >= 0; })) return false;
     if(F.tags.length && !F.tags.every(function(t){ return (i.tags||[]).indexOf(t) >= 0; })) return false;
     if(F.q){
-      var hay = [i.name, i.catch, i.author, i.store, i.memo, i.steps,
+      var hay = [i.name, i.catch, i.store, i.memo, i.steps,
                  (i.categories||[]).join(' '), (i.tags||[]).join(' ')].join(' ').toLowerCase();
       if(hay.indexOf(F.q.toLowerCase()) < 0) return false;
     }
@@ -856,6 +862,7 @@ function cardHtml(i){
         '<span class="pill pill-' + esc(i.status) + '">' + esc(i.status) + '</span>' +
       '</div>' +
       (i.catch ? '<div class="card-catch">' + esc(i.catch) + '</div>' : '') +
+      (i.memo ? '<div class="card-memo">' + esc(i.memo) + '</div>' : '') +
       (badges ? '<div style="display:flex;flex-wrap:wrap;gap:.3rem">' + badges + '</div>' : '') +
       (cats || tags ? '<div style="display:flex;flex-wrap:wrap;gap:.25rem">' + cats + tags + '</div>' : '') +
       '<div class="card-cost">' +
@@ -863,7 +870,7 @@ function cardHtml(i){
         '<div>想定売価<b>' + (i.price ? yen(i.price) : '—') + '</b></div>' +
         '<div>原価率<b class="' + rateClass(i.costRate) + '">' + (i.costRate ? i.costRate + '%' : '—') + '</b></div>' +
       '</div>' +
-      '<div class="card-meta">' + esc(i.author || '') + (i.date ? ' ・ ' + esc(i.date) : '') + '</div>' +
+      '<div class="card-meta">' + esc(i.date || '') + '</div>' +
     '</div></button>';
 }
 
@@ -914,7 +921,7 @@ function detailHtml(i, materials){
   var meta = '';
   if((i.categories||[]).length) meta += '<dt>カテゴリ</dt><dd>' + i.categories.map(function(c){ return '<span class="tag">' + esc(c) + '</span>'; }).join(' ') + '</dd>';
   if((i.tags||[]).length) meta += '<dt>タグ</dt><dd>' + i.tags.map(function(t){ return '<span class="tag">#' + esc(t) + '</span>'; }).join(' ') + '</dd>';
-  meta += '<dt>提案者</dt><dd>' + esc(i.author||'—') + '</dd>';
+  meta += '<dt>提案店舗</dt><dd>' + esc(i.store||'—') + '</dd>';
   meta += '<dt>提案日</dt><dd>' + esc(i.date||'—') + '</dd>';
   h += '<div class="sec"><dl class="kv">' + meta + '</dl></div>';
 
@@ -1058,7 +1065,6 @@ function openForm(id){
   q('formTitle').textContent = id ? 'アイデアを編集' : '新しいアイデアを登録';
   q('i-name').value = idea ? idea.name : '';
   q('i-catch').value = idea ? idea.catch : '';
-  q('i-author').value = idea ? idea.author : ME;
   q('i-store').value = idea ? idea.store : '';
   q('i-status').value = idea ? idea.status : '提案中';
   q('i-month').value = idea ? idea.month : '';
@@ -1290,7 +1296,6 @@ on(q('formSave'), 'click', function(){
   var payload = {
     name: q('i-name').value.trim(),
     catch: q('i-catch').value.trim(),
-    author: q('i-author').value.trim(),
     store: q('i-store').value,
     status: q('i-status').value,
     month: q('i-month').value,
@@ -1309,12 +1314,11 @@ on(q('formSave'), 'click', function(){
     memo: q('i-memo').value,
     photo1: FORM.photo1, photo2: FORM.photo2,
     materials: FORM.materials.filter(function(m){ return String(m.name||'').trim() !== ''; }),
-    updatedBy: ME || q('i-author').value.trim(),
+    updatedBy: ME,
     updatedAt: FORM.updatedAt      // 楽観ロック用。他の人が先に保存していたら弾かれる
   };
 
   if(!payload.name){ toast('商品名を入力してください', true); q('i-name').focus(); return; }
-  if(!payload.author){ toast('提案者を入力してください', true); q('i-author').focus(); return; }
   if(!payload.store){ toast('提案店舗を選んでください', true); q('i-store').focus(); return; }
   if(payload.status === '採用' && !payload.month){
     toast('「採用」にするときは採用月を選んでください', true); q('i-month').focus(); return;
@@ -1328,7 +1332,6 @@ on(q('formSave'), 'click', function(){
   var call = FORM.id ? gsRun('updateIdea', FORM.id, payload) : gsRun('addIdea', payload);
   call.then(function(){
     toast(FORM.id ? '更新しました' : '登録しました');
-    if(!ME && payload.author){ setMe(payload.author); }
     return reload();
   }).then(function(){
     switchView('list');
@@ -1450,7 +1453,7 @@ on(q('ct-add'), 'click', function(){
 });
 
 // ============================================================
-// 自分の名前（提案者・更新者の初期値）
+// 自分の名前（誰が最後に更新したかの記録に使う）
 // ============================================================
 function setMe(name){
   ME = String(name||'').trim();
@@ -1458,7 +1461,7 @@ function setMe(name){
   q('meName').textContent = ME || '名前を設定';
 }
 on(q('meBtn'), 'click', function(){
-  var v = prompt('あなたの名前を入力してください（提案者の初期値になります）', ME);
+  var v = prompt('あなたの名前を入力してください（「誰が最後に更新したか」の記録に使います）', ME);
   if(v != null) setMe(v);
 });
 
