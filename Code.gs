@@ -171,11 +171,14 @@ function apiCall(passcode, action, args) {
     case 'addStore':         return addStore_(args[0]);
     case 'updateStore':      return updateStore_(args[0], args[1]);
     case 'deleteStore':      return deleteStore_(args[0]);
+    case 'reorderStores':    return reorderStores_(args[0]);
     case 'addEvent':         return addEvent_(args[0]);
     case 'updateEvent':      return updateEvent_(args[0], args[1]);
     case 'deleteEvent':      return deleteEvent_(args[0]);
+    case 'reorderEvents':    return reorderEvents_(args[0]);
     case 'addCategory':      return addCategory_(args[0]);
     case 'deleteCategory':   return deleteCategory_(args[0]);
+    case 'reorderCategories':return reorderCategories_(args[0]);
     default: throw new Error('不正な操作です: ' + action);
   }
 }
@@ -980,6 +983,77 @@ function validateMasterName_(name, label) {
   if (!trimmed) throw new Error(label + 'を入力してください');
   if (/[,\r\n]/.test(trimmed)) throw new Error(label + 'にカンマや改行は使えません');
   return trimmed;
+}
+
+// ============================================================
+// マスタの並び替え
+// ============================================================
+// 画面から渡された名前の並び順どおりにシートの行を並べ替える。
+// 「表示順」列を持つマスタ（店舗・イベント）は 1..N で振り直し、
+// 持たないマスタ（カテゴリ）は行の物理的な順序がそのまま表示順になる。
+//
+// 画面に無い名前（別の人が同時に追加した等）は消さずに末尾へ回す。
+// ここで消してしまうと、2人が同時にマスタを触ったときに片方の追加が失われる。
+function reorderMasterRows_(sh, headers, textCols, orderedNames, orderCol) {
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return;
+
+  const rows = sh.getRange(2, 1, lastRow - 1, headers.length).getValues()
+    .filter(r => String(r[0]).trim() !== '');
+
+  const pos = {};
+  (orderedNames || []).forEach((n, i) => { pos[String(n).trim()] = i; });
+  rows.forEach((r, i) => { r._i = i; });   // 並びが同点のときに元の順序を保つ
+  rows.sort((a, b) => {
+    const ia = pos[String(a[0]).trim()], ib = pos[String(b[0]).trim()];
+    const va = ia === undefined ? 9999 : ia;
+    const vb = ib === undefined ? 9999 : ib;
+    return va !== vb ? va - vb : a._i - b._i;
+  });
+  rows.forEach(r => { delete r._i; });
+
+  if (orderCol) rows.forEach((r, i) => { r[orderCol - 1] = i + 1; });
+
+  sh.getRange(2, 1, lastRow - 1, headers.length).clearContent();
+  if (rows.length) {
+    // 書式は必ず setValues の前に当てる
+    textCols.forEach(c => sh.getRange(2, c, rows.length, 1).setNumberFormat('@'));
+    sh.getRange(2, 1, rows.length, headers.length).setValues(rows);
+  }
+}
+
+function reorderStores_(names) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    reorderMasterRows_(getStoreSheet_(), STORE_HEADERS, STORE_TEXT_COLS, names, 2);
+    return getStoreList_();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function reorderEvents_(names) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    reorderMasterRows_(getEventSheet_(), EVENT_HEADERS, EVENT_TEXT_COLS, names, 3);
+    return getEvents_();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function reorderCategories_(names) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    // カテゴリシートは「カテゴリ名」1列だけなので、行の並び順がそのまま表示順になる
+    reorderMasterRows_(getCategorySheet_(), [CATEGORY_HEADER], [1], names, 0);
+    return getCategoryList_();
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 // マスタを名前でキーにしているため、改名時はアイデア側の該当列を一括で書き換える必要がある
