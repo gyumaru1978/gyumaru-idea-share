@@ -50,7 +50,9 @@
  */
 
 // ▼▼▼ ここにスプレッドシートIDを設定する ▼▼▼
-const SPREADSHEET_ID = '';
+// 「新商品アイデア共有」スプレッドシート
+// https://docs.google.com/spreadsheets/d/14aEoP1eeF4LrClVLxgpiUiqQDEfA2cWde5aRYFnnFnI/edit
+const SPREADSHEET_ID = '14aEoP1eeF4LrClVLxgpiUiqQDEfA2cWde5aRYFnnFnI';
 
 const IDEA_SHEET_NAME     = 'アイデア';
 const MATERIAL_SHEET_NAME = '材料';
