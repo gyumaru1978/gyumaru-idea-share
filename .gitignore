@@ -1,0 +1,24 @@
+# clasp のローカル設定。scriptId（このPCがどのApps Scriptプロジェクトに
+# push するか）が入る。別PCで作業するときは clasp create-script か
+# clasp clone-script で作り直すため、リポジトリには含めない
+.clasp.json
+.clasprc.json
+
+# clasp が pull したときの一時ファイル
+.claspignore
+
+# OS・エディタ
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+.vscode/
+.idea/
+
+# ローカル確認用の一時ファイル
+preview.html
+mock.js
+*.log
+
+# 万一 node を使う場合
+node_modules/
