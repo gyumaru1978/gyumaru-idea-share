@@ -690,7 +690,7 @@ var D = {  // サーバーから取得したマスタ類
 };
 var F = { status:'', unread:false, store:'', cats:[], tags:[], q:'', group:'none', dept:'' };
 var FORM = { id:null, materials:[], status:'アイデア', cats:[], tags:[], allergens:[], storage:'',
-             photo1:'', photo2:'', posters:[], updatedAt:'', dept:'店舗部門', deptTouched:false };
+             photo1:'', photo2:'', posters:[], newPosters:[], updatedAt:'', dept:'店舗部門', deptTouched:false };
 var DETAIL = null;        // 現在詳細を開いているアイデア
 var DETAIL_MATS = [];     // 詳細で表示中の材料（コメント投稿後の再描画に使う）
 var DETAIL_POSTERS = [];  // 詳細で表示中のポスター（同上）
@@ -1512,6 +1512,7 @@ function openForm(id){
   }
 
   FORM.posters = [];
+  FORM.newPosters = [];
   renderPickGroups();
   renderPhotos();
   renderPosterFormArea();
@@ -1800,12 +1801,18 @@ on(q('formSave'), 'click', function(){
   if(!payload.name){ toast('商品名を入力してください', true); q('i-name').focus(); return; }
   if(!payload.store){ toast('提案店舗を選んでください', true); q('i-store').focus(); return; }
 
+  var hasImg = payload.photo1.indexOf('data:') === 0 || (FORM.newPosters||[]).length > 0;
   var btn = q('formSave');
   btn.disabled = true;
-  btn.textContent = payload.photo1.indexOf('data:') === 0 ? '写真を送信中…' : '保存中…';
+  btn.textContent = hasImg ? '画像を送信中…' : '保存中…';
 
   var call = FORM.id ? gsRun('updateIdea', FORM.id, payload) : gsRun('addIdea', payload);
-  call.then(function(){
+  call.then(function(res){
+    // 新規登録で、手元に溜めたポスターがあれば、採番されたIDに紐づけて登録する
+    if(!FORM.id && res && res.idea && (FORM.newPosters||[]).length){
+      return uploadBufferedPosters(res.idea.id);
+    }
+  }).then(function(){
     toast(FORM.id ? '更新しました' : '登録しました');
     return reload();
   }).then(function(){
@@ -2082,18 +2089,17 @@ on(q('tg-add'), 'click', function(){
 // ============================================================
 // ポスター（商品ごと・店舗ラベル付き）
 // ============================================================
-// 編集フォームのポスター欄を描く。posters は FORM.posters（getIdeaDetailで取得済み）。
+// 編集フォームのポスター欄。完成イメージと同じく、新規登録中でも先に選んでおける。
+//   FORM.posters    … 既に保存済み（サーバー由来。すぐ削除できる）
+//   FORM.newPosters … この画面で選んだが未保存の分（保存時にまとめて登録）
 function renderPosterFormArea(){
   var area = q('posterFormArea');
-  if(!FORM.id){
-    // 新規登録中はまだ商品IDが無く、ポスターを紐づけられない
-    area.innerHTML = '<div class="hint">先にこの商品を保存すると、ポスターを追加できるようになります。</div>';
-    return;
-  }
   var storeOpts = (D.stores||[]).map(function(s){
     return '<option value="' + esc(s.name) + '">' + esc(s.name) + '</option>';
   }).join('');
-  var cards = (FORM.posters||[]).map(posterCardHtml).join('') ||
+  var saved = (FORM.posters||[]).map(function(p){ return posterCardHtml(p, false, 0); }).join('');
+  var buffered = (FORM.newPosters||[]).map(function(p, i){ return posterCardHtml(p, true, i); }).join('');
+  var cards = saved + buffered ||
     '<div class="hint" style="grid-column:1/-1">まだポスターがありません</div>';
   area.innerHTML =
     '<div class="prow">' +
@@ -2105,16 +2111,20 @@ function renderPosterFormArea(){
     '<div class="pgrid" style="margin-top:.7rem">' + cards + '</div>';
   on(q('pfile'), 'change', onPosterPicked);
 }
-function posterCardHtml(p){
-  return '<div class="pcard" data-id="' + esc(p.id) + '">' +
-    '<div class="pcard-img"><img src="' + esc(p.thumbUrl) + '" alt="" loading="lazy"></div>' +
+// buffered=true は未保存（保存時に登録）。idx は FORM.newPosters の位置
+function posterCardHtml(p, buffered, idx){
+  var img = buffered ? p.image : p.thumbUrl;
+  var actions = buffered
+    ? '<span class="pill" style="background:var(--warn-bg);color:var(--warn)">保存時に追加</span>' +
+      '<button type="button" class="btn btn-danger btn-sm" data-buf="' + idx + '">取り消し</button>'
+    : '<a class="btn btn-primary btn-sm" href="' + esc(p.downloadUrl) + '" target="_blank" rel="noopener">ダウンロード</a>' +
+      '<button type="button" class="btn btn-danger btn-sm" data-id="' + esc(p.id) + '">削除</button>';
+  return '<div class="pcard">' +
+    '<div class="pcard-img"><img src="' + esc(img) + '" alt="" loading="lazy"></div>' +
     '<div class="pcard-body">' +
       '<div class="pcard-title">' + esc(p.store) + (p.title ? '：' + esc(p.title) : '') + '</div>' +
-      '<div class="pcard-meta">' + esc(p.at) + (p.by ? ' / ' + esc(p.by) : '') + '</div>' +
-      '<div class="pcard-actions">' +
-        '<a class="btn btn-primary btn-sm" href="' + esc(p.downloadUrl) + '" target="_blank" rel="noopener">ダウンロード</a>' +
-        '<button type="button" class="btn btn-danger btn-sm" data-act="del">削除</button>' +
-      '</div>' +
+      (buffered ? '' : '<div class="pcard-meta">' + esc(p.at) + (p.by ? ' / ' + esc(p.by) : '') + '</div>') +
+      '<div class="pcard-actions">' + actions + '</div>' +
     '</div></div>';
 }
 // ポスターは印刷にも使うので、写真より高解像度（長辺2000px・品質0.85）で保存する
@@ -2125,27 +2135,49 @@ function onPosterPicked(e){
   var store = q('pstore').value;
   var title = q('ptitle').value.trim();
   if(!store){ toast('使った店舗を選んでください', true); return; }
-  toast('ポスターをアップロード中…');
+
   compressImage(f, 2000, 0.85).then(function(dataUrl){
-    return gsRun('addPoster', { ideaId: FORM.id, store: store, title: title, image: dataUrl, by: ME });
-  }).then(function(list){
-    FORM.posters = list || [];
+    if(FORM.id){
+      // 既存商品：その場でサーバーに登録
+      toast('ポスターをアップロード中…');
+      return gsRun('addPoster', { ideaId: FORM.id, store: store, title: title, image: dataUrl, by: ME })
+        .then(function(list){ FORM.posters = list || []; toast('ポスターを追加しました'); });
+    }else{
+      // 新規商品：完成イメージと同じく、いったん手元に持っておき保存時に登録する
+      FORM.newPosters.push({ store: store, title: title, image: dataUrl });
+    }
+  }).then(function(){
     q('ptitle').value = '';
     renderPosterFormArea();
-    toast('ポスターを追加しました');
   }).catch(function(err){ toast(errMsg(err), true); });
 }
 on(q('posterFormArea'), 'click', function(e){
-  var b = e.target.closest('button[data-act="del"]');
+  var b = e.target.closest('button[data-buf],button[data-id]');
   if(!b) return;
-  var id = b.closest('.pcard').dataset.id;
+  if(b.hasAttribute('data-buf')){
+    // 未保存分の取り消し（手元から外すだけ）
+    FORM.newPosters.splice(Number(b.dataset.buf), 1);
+    renderPosterFormArea();
+    return;
+  }
   if(!confirm('このポスターを削除しますか？')) return;
-  gsRun('deletePoster', id).then(function(list){
+  gsRun('deletePoster', b.dataset.id).then(function(list){
     FORM.posters = list || [];
     renderPosterFormArea();
     toast('削除しました');
   }).catch(function(err){ toast(errMsg(err), true); });
 });
+
+// 新規商品の保存後、手元に溜めたポスターを順に登録する
+function uploadBufferedPosters(ideaId){
+  var queue = (FORM.newPosters || []).slice();
+  FORM.newPosters = [];
+  return queue.reduce(function(p, poster){
+    return p.then(function(){
+      return gsRun('addPoster', { ideaId: ideaId, store: poster.store, title: poster.title, image: poster.image, by: ME });
+    });
+  }, Promise.resolve());
+}
 
 // ============================================================
 // 社長モード
