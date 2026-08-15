@@ -2043,6 +2043,7 @@ function renderCatList(){
     return '<div class="mrow" data-name="' + esc(c) + '">' +
       ordHtml(idx, list.length) +
       '<div class="nm">' + esc(c) + '<span class="sub"> ・ ' + (counts[c]||0) + '件</span></div>' +
+      '<button class="btn btn-line btn-sm" data-act="rename">改名</button>' +
       '<button class="btn btn-danger btn-sm" data-act="del">削除</button></div>';
   }).join('') || '<div class="hint">カテゴリが登録されていません</div>';
 }
@@ -2050,9 +2051,17 @@ on(q('catList'), 'click', function(e){
   var b = e.target.closest('button');
   if(!b) return;
   var name = b.closest('.mrow').dataset.name;
-  if(!confirm('カテゴリ「' + name + '」を削除しますか？')) return;
-  gsRun('deleteCategory', name).then(function(){ toast('削除しました'); return reload(); })
-    .catch(function(err){ toast(errMsg(err), true); });
+  if(b.dataset.act === 'rename'){
+    var nn = prompt('新しいカテゴリ名（付いている全アイデアに反映されます）', name);
+    if(nn == null) return;
+    gsRun('renameCategory', name, nn)
+      .then(function(r){ toast(r.renamed ? '改名しました（' + r.renamed + '件のアイデアに反映）' : '改名しました'); return reload(); })
+      .catch(function(err){ toast(errMsg(err), true); });
+  }else{
+    if(!confirm('カテゴリ「' + name + '」を削除しますか？')) return;
+    gsRun('deleteCategory', name).then(function(){ toast('削除しました'); return reload(); })
+      .catch(function(err){ toast(errMsg(err), true); });
+  }
 });
 on(q('ct-add'), 'click', function(){
   var name = q('ct-name').value.trim();

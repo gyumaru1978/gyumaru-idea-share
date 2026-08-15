@@ -239,6 +239,7 @@ function apiCall(passcode, action, args) {
     case 'addPoster':        return addPoster_(args[0]);
     case 'deletePoster':     return deletePoster_(args[0]);
     case 'addCategory':      return addCategory_(args[0]);
+    case 'renameCategory':   return renameCategory_(args[0], args[1]);
     case 'deleteCategory':   return deleteCategory_(args[0]);
     case 'reorderCategories':return reorderCategories_(args[0]);
     default: throw new Error('不正な操作です: ' + action);
@@ -1106,18 +1107,25 @@ function deleteFromMasterColumn_(sh, name) {
 // タグ列を全行走査し、target を newName に置換（newName=null なら削除）した行数を返す。
 // joinList_ を通すので、改名先が既に付いている行では自動的に重複が1つにまとまる。
 function rewriteTagColumn_(target, newName) {
+  return rewriteListColumn_(IDEA_COL.tags, target, newName);
+}
+
+// カンマ区切りの列（タグ・カテゴリ）の中の target を newName に置換する。
+// newName が null なら target を取り除く（削除）。joinList_ を通すので重複は自動でまとまる。
+// 変更した行数を返す。
+function rewriteListColumn_(col, target, newName) {
   const sh = getIdeaSheet_();
   const lastRow = sh.getLastRow();
   if (lastRow < 2) return 0;
-  const range = sh.getRange(2, IDEA_COL.tags, lastRow - 1, 1);
+  const range = sh.getRange(2, col, lastRow - 1, 1);
   const values = range.getValues();
   let count = 0;
   values.forEach(r => {
-    const tags = splitList_(r[0]);
-    if (tags.indexOf(target) < 0) return;
+    const items = splitList_(r[0]);
+    if (items.indexOf(target) < 0) return;
     const next = newName === null
-      ? tags.filter(t => t !== target)
-      : tags.map(t => (t === target ? newName : t));
+      ? items.filter(t => t !== target)
+      : items.map(t => (t === target ? newName : t));
     r[0] = joinList_(next);
     count++;
   });
@@ -1338,6 +1346,32 @@ function addCategory_(name) {
     sh.getRange(rowNum, 1, 1, 1).setNumberFormat('@');
     sh.getRange(rowNum, 1, 1, 1).setValues([[trimmed]]);
     return getCategoryList_();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// カテゴリの改名。マスタ側を書き換え、アイデア側のカテゴリ列も一括で追随させる。
+function renameCategory_(oldName, newName) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const to = validateMasterName_(newName, 'カテゴリ名');
+    const from = String(oldName || '').trim();
+    const list = getCategoryList_();
+    if (list.indexOf(from) < 0) throw new Error('カテゴリが見つかりません: ' + from);
+    if (to !== from && list.indexOf(to) >= 0) throw new Error('同じ名前のカテゴリが既にあります');
+
+    const sh = getCategorySheet_();
+    const lastRow = sh.getLastRow();
+    const names = sh.getRange(2, 1, lastRow - 1, 1).getValues();
+    const idx = names.findIndex(r => String(r[0]).trim() === from);
+    if (idx >= 0) {
+      sh.getRange(idx + 2, 1, 1, 1).setNumberFormat('@');
+      sh.getRange(idx + 2, 1, 1, 1).setValues([[to]]);
+    }
+    const renamed = (to !== from) ? rewriteListColumn_(IDEA_COL.categories, from, to) : 0;
+    return { categories: getCategoryList_(), renamed: renamed };
   } finally {
     lock.releaseLock();
   }
