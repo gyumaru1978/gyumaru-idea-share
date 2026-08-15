@@ -99,6 +99,31 @@ img{max-width:100%;display:block}
   max-height:calc(1.55em * 4 + .8rem)}
 .card-meta{font-size:.7rem;color:var(--ink-faint);display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;margin-top:auto;padding-top:.15rem}
 
+/* ===== 未読（社長コメント）表示 =====
+   「一覧を見た瞬間に動きのある商品が分かる」が要件。ただし画面全体が
+   派手にならないよう、未読カードは左端のアクセント＋1行のバッジだけにする */
+.card.unread{border-left:4px solid var(--danger)}
+.card-unread{display:flex;align-items:center;gap:.4rem;font-size:.72rem;font-weight:700;color:var(--danger)}
+.card-unread::before{content:'';width:.5rem;height:.5rem;border-radius:999px;background:var(--danger);flex:0 0 auto}
+.card-unread .un-at{color:var(--ink-faint);font-weight:600}
+
+/* ===== 社長からのコメント・方針（詳細画面） =====
+   現場コメントと一目で区別できるよう琥珀色。最新を大きく、履歴は折りたたみ */
+.pres-box{background:var(--warn-bg);border:1px solid #fcd34d;border-radius:10px;padding:.7rem .8rem}
+.pres-box .pb-head{display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap;
+  font-size:.7rem;color:#92400e;font-weight:700;margin-bottom:.3rem}
+.pres-box .pb-text{font-size:.88rem;line-height:1.75;white-space:pre-wrap}
+.pres-old{margin-top:.5rem;opacity:.85}
+.pres-old .pb-text{font-size:.8rem}
+.cmt{background:var(--bg);border-radius:9px;padding:.55rem .7rem;margin-bottom:.45rem}
+.cmt .c-head{display:flex;justify-content:space-between;gap:.5rem;font-size:.68rem;color:var(--ink-faint);font-weight:700;margin-bottom:.2rem}
+.cmt .c-text{font-size:.84rem;line-height:1.7;white-space:pre-wrap}
+.cform{display:flex;flex-direction:column;gap:.45rem;margin-top:.6rem}
+.cform textarea{width:100%;padding:.55rem .65rem;border:1px solid var(--line);border-radius:8px;background:#fff;
+  font-size:.88rem;min-height:4rem;resize:vertical;line-height:1.7}
+.cform .btn{align-self:flex-end}
+.hdr-pres{font-size:.68rem;background:#fbbf24;color:#78350f;border-radius:999px;padding:.14rem .55rem;font-weight:700;white-space:nowrap}
+
 .pill{display:inline-block;padding:.16rem .5rem;border-radius:999px;font-size:.68rem;font-weight:700;white-space:nowrap}
 .pill-提案中{background:#eff6ff;color:#1d4ed8}
 .pill-検討中{background:var(--warn-bg);color:var(--warn)}
@@ -264,7 +289,10 @@ img{max-width:100%;display:block}
       <div class="hdr-title">新商品アイデア共有</div>
       <div class="hdr-sub">アイデア・レシピを店舗間で共有</div>
     </div>
-    <button id="meBtn" class="hdr-me"><span id="meName">名前を設定</span></button>
+    <div style="display:flex;align-items:center;gap:.45rem">
+      <span id="presBadge" class="hdr-pres hidden">社長モード</span>
+      <button id="meBtn" class="hdr-me"><span id="meName">名前を設定</span></button>
+    </div>
   </div>
 </header>
 
@@ -283,6 +311,12 @@ img{max-width:100%;display:block}
 <section id="view-list">
   <!-- 切替バー：このアプリの中心機能 -->
   <div class="axis">
+    <!-- 部門タブ。ステータス（開発段階）とは別の軸で「どちらの事業の商品か」を切り替える -->
+    <div class="seg" id="segDept" style="margin-bottom:.5rem">
+      <button data-dept="" class="on">すべて</button>
+      <button data-dept="店舗部門">店舗部門</button>
+      <button data-dept="ぎゅう丸ラボ">ぎゅう丸ラボ</button>
+    </div>
     <div class="seg" id="segAxis">
       <button data-mode="all" class="on">すべて</button>
       <button data-mode="month">採用月で見る</button>
@@ -336,6 +370,8 @@ img{max-width:100%;display:block}
       <div class="f"><label>商品名<span class="req">*</span></label><input id="i-name" placeholder="例：柚子胡椒からあげ"></div>
       <div class="f"><label>キャッチコピー</label><input id="i-catch" placeholder="例：ピリッと爽やか、九州の定番"></div>
       <div class="f"><label>提案店舗<span class="req">*</span></label><select id="i-store"></select></div>
+      <div class="f"><label>部門<span class="req">*</span></label><div class="picks" id="i-dept"></div>
+        <div class="hint">一覧の部門タブでの表示先です</div></div>
     </div>
   </div>
 
@@ -462,6 +498,24 @@ img{max-width:100%;display:block}
       <button id="ct-add" class="btn btn-primary btn-sm">追加</button>
     </div>
   </div>
+  <div class="panel">
+    <h3>タグの編集</h3>
+    <p style="font-size:.75rem;color:var(--ink-faint);margin-bottom:.7rem">
+      使われているタグの一覧です。改名・削除はそのタグが付いた全アイデアに反映されます。
+      表記ゆれの統一（例：「SNSばえ」→「SNS映え」）にも使えます。</p>
+    <div id="tagList" class="mlist"></div>
+  </div>
+  <div class="panel">
+    <h3>社長モード</h3>
+    <p style="font-size:.75rem;color:var(--ink-faint);margin-bottom:.7rem">
+      社長用の合い言葉を入力すると、各商品に「社長からのコメント・方針」を投稿できるようになります。
+      合い言葉はGASのスクリプト プロパティ（PRESIDENT_PASSCODE）で設定します。</p>
+    <div class="addrow" id="presForm">
+      <input id="pres-pass" type="password" autocomplete="off" placeholder="社長用の合い言葉">
+      <button id="pres-on" class="btn btn-primary btn-sm">有効にする</button>
+    </div>
+    <button id="pres-off" class="btn btn-line btn-sm hidden">社長モードを解除する</button>
+  </div>
 </section>
 
 </main>
@@ -534,19 +588,24 @@ var DRIVE_THUMB_BASE = 'https://drive.google.com/thumbnail?id=';
 // 状態
 // ============================================================
 var LS_PASSCODE = 'idea_passcode';
-var LS_ME       = 'idea_me';       // 自分の名前。シートの「更新者」に記録する
+var LS_ME       = 'idea_me';       // 自分の名前。既読の管理と「更新者」の記録に使う
 var LS_FILTER   = 'idea_filter';   // 絞り込みの選択状態
+var LS_PRES     = 'idea_pres';     // 社長モードの合い言葉（本人確認はサーバー側が毎回行う）
 
 var PASSCODE = '';
 var ME = '';
+var PRES = '';                     // 社長モードの合い言葉。空なら通常モード
 var D = {  // サーバーから取得したマスタ類
-  ideas:[], stores:[], events:[], categories:[], tags:[],
+  ideas:[], stores:[], events:[], categories:[], tags:[], readMap:{},
+  deptOptions:['店舗部門','ぎゅう丸ラボ'],
   statusOptions:['提案中','検討中','採用','見送り'], unitOptions:[], yieldUnitOptions:[],
   allergenOptions:[], storageOptions:[], monthOptions:[], today:'', thisMonth:''
 };
-var F = { mode:'all', month:'', event:'', status:'', store:'', cats:[], tags:[], q:'', group:'none' };
-var FORM = { id:null, materials:[], cats:[], tags:[], allergens:[], storage:'', photo1:'', photo2:'', updatedAt:'' };
-var DETAIL = null;   // 現在詳細を開いているアイデア
+var F = { mode:'all', month:'', event:'', status:'', store:'', cats:[], tags:[], q:'', group:'none', dept:'' };
+var FORM = { id:null, materials:[], cats:[], tags:[], allergens:[], storage:'', photo1:'', photo2:'',
+             updatedAt:'', dept:'店舗部門', deptTouched:false };
+var DETAIL = null;        // 現在詳細を開いているアイデア
+var DETAIL_MATS = [];     // 詳細で表示中の材料（コメント投稿後の再描画に使う）
 
 // ============================================================
 // サーバー通信
@@ -611,6 +670,25 @@ function rateClass(r){
   return 'rate-bad';
 }
 
+// ============================================================
+// 未読判定
+// ============================================================
+// 「社長コメントの最終日時」が「自分の既読日時」より新しければ未読。
+// 日時は 'yyyy/MM/dd HH:mm' の固定形式なので文字列比較で正しく大小が決まる。
+// 名前未設定の人は既読マップが空＝社長コメントのある案がすべて未読に見える
+// （見逃すより「もう読んだのにまた出る」方が安全）。
+function isUnread(i){
+  if(!i.presAt) return false;
+  var seen = (D.readMap||{})[i.id] || '';
+  return !seen || seen < i.presAt;
+}
+// カード下部に出す「最終更新日時」。編集と社長コメントの新しい方
+function latestAt(i){
+  var u = i.updatedAt || '';
+  var p = i.presAt || '';
+  return p > u ? p : u;
+}
+
 // ★この計算式は Code.gs の calcCost_() と完全に同一。
 //   片方だけ直すと画面表示とシート保存値がズレるので、必ず両方セットで直すこと。
 //   丸めは「行ごとに丸めてから合計」に固定（合計後に丸めると1円ズレる）。
@@ -663,17 +741,35 @@ function applyInitialData(data){
   renderStoreList();
   renderCatList();
   renderEventList();
+  renderTagList();
+  renderPresPanel();
   fillFormSelects();
   render();
 }
 
+// 名前（ME）を渡すと、その人の既読マップが返ってきて未読バッジが正しく出る
 function reload(){
-  return gsRun('getInitialData').then(applyInitialData);
+  return gsRun('getInitialData', ME).then(applyInitialData);
 }
 
 // ============================================================
 // 切替バー（採用月／イベント）
 // ============================================================
+// 部門タブ（すべて／店舗部門／ぎゅう丸ラボ）
+on(q('segDept'), 'click', function(e){
+  var b = e.target.closest('button');
+  if(!b) return;
+  F.dept = b.dataset.dept;
+  syncSegDept();
+  saveFilter();
+  render();
+});
+function syncSegDept(){
+  document.querySelectorAll('#segDept button').forEach(function(x){
+    x.classList.toggle('on', x.dataset.dept === (F.dept || ''));
+  });
+}
+
 on(q('segAxis'), 'click', function(e){
   var b = e.target.closest('button');
   if(!b) return;
@@ -809,6 +905,7 @@ function restoreFilter(){
   document.querySelectorAll('#segAxis button').forEach(function(x){
     x.classList.toggle('on', x.dataset.mode === F.mode);
   });
+  syncSegDept();
   q('fQ').value = F.q || '';
 }
 
@@ -817,6 +914,7 @@ function restoreFilter(){
 // ============================================================
 function filtered(){
   return D.ideas.filter(function(i){
+    if(F.dept && i.dept !== F.dept) return false;
     if(F.mode === 'month' && F.month && i.month !== F.month) return false;
     if(F.mode === 'event' && F.event && i.event !== F.event) return false;
     if(F.status && i.status !== F.status) return false;
@@ -830,7 +928,10 @@ function filtered(){
     }
     return true;
   }).sort(function(a, b){
-    // 採用月が新しい順 → 提案日が新しい順 → ID降順
+    // 未読（社長コメントあり）を最優先で先頭へ。
+    // その後は 採用月が新しい順 → 提案日が新しい順 → ID降順
+    var ua = isUnread(a) ? 1 : 0, ub = isUnread(b) ? 1 : 0;
+    if(ua !== ub) return ub - ua;
     if(a.month !== b.month) return a.month < b.month ? 1 : -1;
     if(a.date !== b.date) return a.date < b.date ? 1 : -1;
     return a.id < b.id ? 1 : -1;
@@ -887,7 +988,10 @@ function groupedHtml(rows, key){
 // 原価は一覧では出さず、詳細画面だけで見せる（一覧は「どんな案があるか」を追う場所）
 function renderStats(rows){
   function count(s){ return rows.filter(function(i){ return i.status === s; }).length; }
+  var unread = rows.filter(isUnread).length;
   q('stats').innerHTML =
+    '<div class="stat"><b' + (unread ? ' style="color:var(--danger)"' : '') + '>' + unread +
+      '</b><span>未読</span></div>' +
     '<div class="stat"><b>' + rows.length + '</b><span>表示中</span></div>' +
     '<div class="stat"><b>' + count('提案中') + '</b><span>提案中</span></div>' +
     '<div class="stat"><b>' + count('検討中') + '</b><span>検討中</span></div>' +
@@ -896,16 +1000,23 @@ function renderStats(rows){
 
 function cardHtml(i){
   var img = photoUrl(i.photo1);
+  var unread = isUnread(i);
   var badges = '';
   if(i.month) badges += '<span class="badge">' + esc(monthLabel(i.month)) + '採用</span>';
   if(i.event) badges += '<span class="badge badge-ev">' + esc(i.event) + '</span>';
   if(i.store) badges += '<span class="badge badge-store">' + esc(i.store) + '</span>';
+  // 部門バッジは「すべて」表示のときだけ（部門タブで絞っている間は全カード同じになるので邪魔）
+  if(!F.dept && i.dept) badges += '<span class="badge">' + esc(i.dept) + '</span>';
 
   var tags = (i.tags||[]).slice(0, 4).map(function(t){ return '<span class="tag">#' + esc(t) + '</span>'; }).join('');
   var cats = (i.categories||[]).map(function(c){ return '<span class="tag">' + esc(c) + '</span>'; }).join('');
 
-  return '<button class="card" data-id="' + esc(i.id) + '">' +
+  // 未読は「1行のバッジ＋左端のアクセント」だけ。社長コメント本文は一覧には出さず、
+  // 詳細を開いて読む（＝開いた時点で既読になる）設計
+  return '<button class="card' + (unread ? ' unread' : '') + '" data-id="' + esc(i.id) + '">' +
     '<div class="card-body">' +
+      (unread ? '<div class="card-unread">未読 社長コメント更新<span class="un-at">' +
+        esc(i.presAt) + '</span></div>' : '') +
       '<div class="card-top">' +
         (img ? '<img class="card-thumb" src="' + esc(img) + '" alt="" loading="lazy">' : '') +
         '<div class="card-head">' +
@@ -917,7 +1028,7 @@ function cardHtml(i){
       (i.memo ? '<div class="card-memo">' + esc(i.memo) + '</div>' : '') +
       (badges ? '<div style="display:flex;flex-wrap:wrap;gap:.3rem">' + badges + '</div>' : '') +
       (cats || tags ? '<div style="display:flex;flex-wrap:wrap;gap:.25rem">' + cats + tags + '</div>' : '') +
-      '<div class="card-meta">' + esc(i.date || '') + '</div>' +
+      '<div class="card-meta">更新 ' + esc(latestAt(i)) + '</div>' +
     '</div></button>';
 }
 
@@ -935,27 +1046,38 @@ function openDetail(id){
   DETAIL = idea;
   q('d-name').textContent = idea.name;
   q('d-catch').textContent = idea.catch || '';
-  q('d-body').innerHTML = '<div class="loading"><span class="spin"></span>レシピを読み込み中…</div>';
+  q('d-body').innerHTML = '<div class="loading"><span class="spin"></span>読み込み中…</div>';
   q('detail').classList.remove('hidden');
 
   gsRun('getIdeaDetail', id).then(function(res){
     DETAIL = res.idea;
+    DETAIL_MATS = res.materials || [];
     // 一覧側のキャッシュも最新に差し替えておく
     var idx = D.ideas.findIndex(function(i){ return String(i.id) === String(id); });
     if(idx >= 0) D.ideas[idx] = res.idea;
-    q('d-body').innerHTML = detailHtml(res.idea, res.materials);
+    q('d-body').innerHTML = detailHtml(res.idea, DETAIL_MATS, res.comments || []);
+
+    // 詳細を開いた＝社長コメントを読んだ、として既読を記録する。
+    // 画面は待たせず先に既読扱いにし、サーバーへの記録は裏で送る
+    if(isUnread(res.idea)){
+      D.readMap[res.idea.id] = res.idea.presAt;
+      render();   // 背後の一覧から未読バッジを消す
+      gsRun('markRead', res.idea.id, ME).catch(function(){ /* 記録失敗は次回開いたときに再送される */ });
+    }
   }).catch(function(e){
     q('d-body').innerHTML = '<div class="empty">読み込みに失敗しました<br>' + esc(errMsg(e)) + '</div>';
   });
 }
 
-function detailHtml(i, materials){
+function detailHtml(i, materials, comments){
   var h = '';
+  comments = comments || [];
 
   var badges = '<span class="pill pill-' + esc(i.status) + '">' + esc(i.status) + '</span>';
   if(i.month) badges += ' <span class="badge">' + esc(monthLabel(i.month)) + '採用</span>';
   if(i.event) badges += ' <span class="badge badge-ev">' + esc(i.event) + '</span>';
   if(i.store) badges += ' <span class="badge badge-store">' + esc(i.store) + '</span>';
+  if(i.dept) badges += ' <span class="badge">' + esc(i.dept) + '</span>';
   h += '<div class="sec" style="display:flex;flex-wrap:wrap;gap:.35rem;align-items:center">' + badges + '</div>';
 
   var ph = [i.photo1, i.photo2].filter(Boolean);
@@ -971,6 +1093,47 @@ function detailHtml(i, materials){
   meta += '<dt>提案店舗</dt><dd>' + esc(i.store||'—') + '</dd>';
   meta += '<dt>提案日</dt><dd>' + esc(i.date||'—') + '</dd>';
   h += '<div class="sec"><dl class="kv">' + meta + '</dl></div>';
+
+  // ---- 社長からのコメント・方針 ----
+  // 最新を強調表示し、過去の履歴は折りたたみ。「以前はどういう方針だったか」を後から追える
+  var pres = comments.filter(function(c){ return c.kind === '社長'; });
+  h += '<div class="sec"><h4>社長からのコメント・方針</h4>';
+  if(pres.length){
+    var latest = pres[pres.length - 1];
+    h += '<div class="pres-box"><div class="pb-head"><span>' + esc(latest.author) + '</span>' +
+         '<span>' + esc(latest.at) + '</span></div>' +
+         '<div class="pb-text">' + esc(latest.text) + '</div></div>';
+    if(pres.length > 1){
+      var olds = pres.slice(0, -1).reverse();   // 新しい履歴から順に
+      h += '<button type="button" id="presHistBtn" class="btn btn-line btn-sm" style="margin-top:.5rem">' +
+           '過去のコメントを見る（' + olds.length + '件）</button>' +
+           '<div id="presHist" class="hidden">' +
+           olds.map(function(c){
+             return '<div class="pres-box pres-old"><div class="pb-head"><span>' + esc(c.author) +
+               '</span><span>' + esc(c.at) + '</span></div>' +
+               '<div class="pb-text">' + esc(c.text) + '</div></div>';
+           }).join('') + '</div>';
+    }
+  }else{
+    h += '<div style="font-size:.8rem;color:var(--ink-faint)">まだコメントはありません</div>';
+  }
+  if(PRES){
+    h += '<div class="cform"><textarea id="presInput" placeholder="この商品のイメージ・方向性・決定事項・方針変更など"></textarea>' +
+         '<button type="button" id="presPost" class="btn btn-primary btn-sm">社長コメントを投稿する</button></div>';
+  }
+  h += '</div>';
+
+  // ---- 現場からのコメント ----
+  // 社長からの一方通行にしないための双方向チャンネル。誰でも投稿できる
+  var field = comments.filter(function(c){ return c.kind !== '社長'; });
+  h += '<div class="sec"><h4>現場からのコメント</h4>';
+  h += field.map(function(c){
+    return '<div class="cmt"><div class="c-head"><span>' + esc(c.author) + '</span>' +
+      '<span>' + esc(c.at) + '</span></div>' +
+      '<div class="c-text">' + esc(c.text) + '</div></div>';
+  }).join('') || '<div style="font-size:.8rem;color:var(--ink-faint)">まだコメントはありません</div>';
+  h += '<div class="cform"><textarea id="fieldInput" placeholder="社長コメントへの質問・意見、現場からの気づきなど"></textarea>' +
+       '<button type="button" id="fieldPost" class="btn btn-line btn-sm">コメントする</button></div></div>';
 
   // 材料・原価
   h += '<div class="sec"><h4>材料・原価</h4>';
@@ -1026,6 +1189,52 @@ function detailHtml(i, materials){
       esc(i.updatedAt) + (i.updatedBy ? ' / ' + esc(i.updatedBy) : '') + '</div>';
   }
   return h;
+}
+
+// 詳細の中身は毎回HTMLを作り直すので、コメント投稿などのボタンはここで一括して拾う
+on(q('d-body'), 'click', function(e){
+  var t = e.target;
+  if(t.id === 'presHistBtn'){
+    var hist = q('presHist');
+    var hidden = hist.classList.toggle('hidden');
+    t.textContent = hidden ? '過去のコメントを見る（' + hist.children.length + '件）'
+                           : '過去のコメントを閉じる';
+  }else if(t.id === 'presPost'){
+    submitComment('社長', 'presInput', t);
+  }else if(t.id === 'fieldPost'){
+    submitComment('現場', 'fieldInput', t);
+  }
+});
+
+function submitComment(kind, inputId, btn){
+  if(!DETAIL) return;
+  var text = String(q(inputId).value || '').trim();
+  if(!text){ toast('コメントを入力してください', true); return; }
+  // 投稿者名は必須。未設定ならその場で決めてもらう
+  if(!ME){
+    var nm = prompt('あなたの名前を入力してください（コメントの投稿者として表示されます）', '');
+    if(nm == null || !String(nm).trim()) return;
+    setMe(nm);
+  }
+  var id = DETAIL.id;
+  btn.disabled = true;
+  var orig = btn.textContent;
+  btn.textContent = '投稿中…';
+  gsRun('postComment', id, { kind: kind, text: text, name: ME }, kind === '社長' ? PRES : '')
+    .then(function(res){
+      DETAIL = res.idea;
+      var idx = D.ideas.findIndex(function(i){ return String(i.id) === String(id); });
+      if(idx >= 0) D.ideas[idx] = res.idea;
+      if(kind === '社長'){
+        // 自分の投稿を自分で未読にしない（サーバー側でも既読化している）
+        D.readMap[id] = res.idea.presAt;
+      }
+      q('d-body').innerHTML = detailHtml(res.idea, DETAIL_MATS, res.comments || []);
+      render();
+      toast('投稿しました');
+    })
+    .catch(function(e){ toast(errMsg(e), true); })
+    .then(function(){ btn.disabled = false; btn.textContent = orig; });
 }
 
 on(q('d-edit'), 'click', function(){ if(DETAIL){ q('detail').classList.add('hidden'); openForm(DETAIL.id); } });
@@ -1106,7 +1315,9 @@ function fillFormSelects(){
 
 function openForm(id){
   var idea = id ? D.ideas.filter(function(i){ return String(i.id) === String(id); })[0] : null;
-  FORM = { id:id||null, materials:[], cats:[], tags:[], allergens:[], storage:'', photo1:'', photo2:'', updatedAt:'' };
+  FORM = { id:id||null, materials:[], cats:[], tags:[], allergens:[], storage:'', photo1:'', photo2:'',
+           updatedAt:'', dept: idea ? (idea.dept || '店舗部門') : '店舗部門',
+           deptTouched: !!idea };   // 既存の案は登録済みの部門を尊重し、店舗変更で勝手に書き換えない
   fillFormSelects();
 
   q('formTitle').textContent = id ? 'アイデアを編集' : '新しいアイデアを登録';
@@ -1169,6 +1380,10 @@ function openForm(id){
 function blankMat(){ return { name:'', qty:'', unit:'g', unitPrice:'' }; }
 
 function renderPickGroups(){
+  q('i-dept').innerHTML = (D.deptOptions||[]).map(function(d){
+    return '<button class="pick' + (FORM.dept === d ? ' on' : '') + '" data-val="' + esc(d) + '">' + esc(d) + '</button>';
+  }).join('');
+
   q('i-cats').innerHTML = (D.categories||[]).map(function(c){
     return '<button class="pick' + (FORM.cats.indexOf(c) >= 0 ? ' on' : '') + '" data-val="' + esc(c) + '">' + esc(c) + '</button>';
   }).join('') || '<span class="hint">「マスタ」からカテゴリを追加してください</span>';
@@ -1193,6 +1408,15 @@ function allergenPick(a){
   return '<button class="pick pick-sm' + (FORM.allergens.indexOf(a) >= 0 ? ' on' : '') +
     '" data-val="' + esc(a) + '">' + esc(a) + '</button>';
 }
+on(q('i-dept'), 'click', function(e){ var b = e.target.closest('.pick'); if(!b) return;
+  FORM.dept = b.dataset.val; FORM.deptTouched = true; renderPickGroups(); });
+// 提案店舗に「ぎゅう丸ラボ」を選んだら部門も自動で合わせる
+// （手で部門を選んだあとは上書きしない）
+on(q('i-store'), 'change', function(){
+  if(FORM.deptTouched) return;
+  FORM.dept = q('i-store').value === 'ぎゅう丸ラボ' ? 'ぎゅう丸ラボ' : '店舗部門';
+  renderPickGroups();
+});
 on(q('i-cats'), 'click', function(e){ var b = e.target.closest('.pick'); if(!b) return;
   toggleIn(FORM.cats, b.dataset.val); renderPickGroups(); });
 on(q('i-tags'), 'click', function(e){ var b = e.target.closest('.pick'); if(!b) return;
@@ -1344,6 +1568,7 @@ on(q('formSave'), 'click', function(){
     name: q('i-name').value.trim(),
     catch: q('i-catch').value.trim(),
     store: q('i-store').value,
+    dept: FORM.dept,
     status: q('i-status').value,
     month: q('i-month').value,
     event: q('i-event').value,
@@ -1562,7 +1787,73 @@ on(q('ct-add'), 'click', function(){
 });
 
 // ============================================================
-// 自分の名前（誰が最後に更新したかの記録に使う）
+// タグの編集（改名・削除は全アイデアへ一括反映）
+// ============================================================
+function renderTagList(){
+  var counts = {};
+  D.ideas.forEach(function(i){ (i.tags||[]).forEach(function(t){ counts[t] = (counts[t]||0) + 1; }); });
+  var keys = Object.keys(counts).sort(function(a,b){ return counts[b] - counts[a]; });
+  q('tagList').innerHTML = keys.map(function(t){
+    return '<div class="mrow" data-name="' + esc(t) + '">' +
+      '<div class="nm">#' + esc(t) + '<span class="sub"> ・ ' + counts[t] + '件</span></div>' +
+      '<button class="btn btn-line btn-sm" data-act="rename">改名</button>' +
+      '<button class="btn btn-danger btn-sm" data-act="del">削除</button></div>';
+  }).join('') || '<div class="hint">タグはまだ使われていません</div>';
+}
+on(q('tagList'), 'click', function(e){
+  var b = e.target.closest('button');
+  if(!b) return;
+  var name = b.closest('.mrow').dataset.name;
+  if(b.dataset.act === 'rename'){
+    var nn = prompt('新しいタグ名（付いている全アイデアに反映されます）', name);
+    if(nn == null) return;
+    gsRun('renameTag', name, nn)
+      .then(function(r){ toast('改名しました（' + r.renamed + '件に反映）'); return reload(); })
+      .catch(function(err){ toast(errMsg(err), true); });
+  }else{
+    if(!confirm('タグ「' + name + '」を、付いている全アイデアから削除しますか？')) return;
+    gsRun('deleteTag', name)
+      .then(function(r){ toast('削除しました（' + r.removed + '件から除去）'); return reload(); })
+      .catch(function(err){ toast(errMsg(err), true); });
+  }
+});
+
+// ============================================================
+// 社長モード
+// ============================================================
+// 「有効にする」時に一度サーバーで検証するが、本人確認の本体は投稿時の再検証。
+// この画面の切り替えは表示上の便宜にすぎない。
+function renderPresPanel(){
+  var onMode = !!PRES;
+  q('presForm').classList.toggle('hidden', onMode);
+  q('pres-off').classList.toggle('hidden', !onMode);
+  q('presBadge').classList.toggle('hidden', !onMode);
+}
+on(q('pres-on'), 'click', function(){
+  var pass = String(q('pres-pass').value || '').trim();
+  if(!pass){ toast('社長用の合い言葉を入力してください', true); return; }
+  var btn = q('pres-on');
+  btn.disabled = true; btn.textContent = '確認中…';
+  gsRun('verifyPresident', pass)
+    .then(function(){
+      PRES = pass;
+      lsSet(LS_PRES, pass);
+      q('pres-pass').value = '';
+      renderPresPanel();
+      toast('社長モードを有効にしました');
+    })
+    .catch(function(e){ toast(errMsg(e), true); })
+    .then(function(){ btn.disabled = false; btn.textContent = '有効にする'; });
+});
+on(q('pres-off'), 'click', function(){
+  PRES = '';
+  lsSet(LS_PRES, '');
+  renderPresPanel();
+  toast('社長モードを解除しました');
+});
+
+// ============================================================
+// 自分の名前（未読の管理と、誰が更新・投稿したかの記録に使う）
 // ============================================================
 function setMe(name){
   ME = String(name||'').trim();
@@ -1570,8 +1861,12 @@ function setMe(name){
   q('meName').textContent = ME || '名前を設定';
 }
 on(q('meBtn'), 'click', function(){
-  var v = prompt('あなたの名前を入力してください（「誰が最後に更新したか」の記録に使います）', ME);
-  if(v != null) setMe(v);
+  var v = prompt('あなたの名前を入力してください（未読の管理と更新記録に使います）', ME);
+  if(v == null) return;
+  var changed = String(v).trim() !== ME;
+  setMe(v);
+  // 名前が変わったら既読マップもその人のものに切り替える
+  if(changed && q('gate').classList.contains('hidden')) reload();
 });
 
 // ============================================================
@@ -1583,10 +1878,19 @@ function unlock(passcode){
   if(!passcode){ msg.textContent = '合い言葉を入力してください'; return; }
   btn.disabled = true; btn.textContent = '確認中…';
   PASSCODE = passcode;
-  gsRun('getInitialData').then(function(data){
+  gsRun('getInitialData', ME).then(function(data){
     lsSet(LS_PASSCODE, passcode);
     q('gate').classList.add('hidden');
     applyInitialData(data);
+    // 名前が未設定だと未読の管理ができないので、最初に一度だけ入力を促す。
+    // 入力後は既読マップを取り直して未読バッジを正しくする
+    if(!ME){
+      var nm = prompt('あなたの名前を入力してください\n（社長コメントの未読管理と、更新記録に使います）', '');
+      if(nm != null && String(nm).trim()){
+        setMe(nm);
+        reload();
+      }
+    }
   }).catch(function(e){
     PASSCODE = '';
     // 「合い言葉が違います」と一律に出すと、サーバー側の設定漏れに気づけないため分けて出す
@@ -1608,6 +1912,8 @@ on(q('gateInput'), 'keydown', function(e){
 // ============================================================
 (function init(){
   setMe(lsGet(LS_ME) || '');
+  PRES = lsGet(LS_PRES) || '';
+  renderPresPanel();
   var saved = lsGet(LS_PASSCODE);
   if(saved){
     q('gateMsg').textContent = '読み込み中…';

@@ -22,6 +22,13 @@
  *    プロパティ名 = APP_PASSCODE、値 = 任意の合い言葉 を1つ追加して保存する。
  *    これを設定しないとアプリは全操作を拒否する（＝ロックされたまま）。
  *    ※合い言葉は clasp からは設定できない。必ずブラウザ上で設定する
+ * 5.5. 社長用の合い言葉を設定する（社長コメント機能を使う場合は必須）
+ *    同じスクリプト プロパティに、プロパティ名 = PRESIDENT_PASSCODE、
+ *    値 = 社長だけが知る合い言葉 を追加する。
+ *    アプリの「マスタ」画面でこれを入力すると「社長モード」になり、
+ *    各商品に「社長からのコメント・方針」を投稿できる。
+ *    投稿のたびにサーバー側でも検証するため、この合い言葉を知らない人は
+ *    画面をいじっても社長として投稿することはできない。
  * 6. 「デプロイ > 新しいデプロイ」→ 種類の歯車アイコンで「ウェブアプリ」を選択
  *      - 次のユーザーとして実行：自分
  *      - アクセスできるユーザー：全員（社内のみで使うなら「Googleアカウントを持つ全員」でも可）
@@ -59,6 +66,8 @@ const MATERIAL_SHEET_NAME = '材料';
 const STORE_SHEET_NAME    = '店舗';
 const EVENT_SHEET_NAME    = 'イベント';
 const CATEGORY_SHEET_NAME = 'カテゴリ';
+const COMMENT_SHEET_NAME  = 'コメント';
+const READ_SHEET_NAME     = '既読';
 const PHOTO_FOLDER_NAME   = '新商品アイデア_写真';
 
 // ============================================================
@@ -74,7 +83,11 @@ const IDEA_COL = {
   steps: 17, allergens: 18,
   kcal: 19, protein: 20, fat: 21, carb: 22, salt: 23,
   storage: 24, bestBefore: 25, memo: 26,
-  photo1: 27, photo2: 28, updatedAt: 29, updatedBy: 30
+  photo1: 27, photo2: 28, updatedAt: 29, updatedBy: 30,
+  // 後から追加した列は移行を単純にするため必ず末尾に足す（途中に挿すと既存データがズレる）
+  dept: 31,     // 部門（店舗部門／ぎゅう丸ラボ）
+  presAt: 32    // 社長コメントの最終投稿日時。一覧の未読判定に使う非正規化値で、
+                // 正本はコメントシート。postComment_ が社長投稿のたびに書き換える
 };
 
 // 分類の軸は4つ。それぞれ役割が違う。
@@ -89,7 +102,8 @@ const IDEA_HEADERS = [
   '作り方', 'アレルギー',
   'エネルギー(kcal)', 'たんぱく質(g)', '脂質(g)', '炭水化物(g)', '食塩相当量(g)',
   '保存方法', '賞味期限目安', 'メモ',
-  '写真URL1', '写真URL2', '更新日時', '更新者'
+  '写真URL1', '写真URL2', '更新日時', '更新者',
+  '部門', '社長コメント日時'
 ];
 
 // 数式インジェクション対策として書式を強制的に「テキスト」にする列。
@@ -114,6 +128,21 @@ const STORE_HEADERS   = ['店舗名', '表示順'];
 const STORE_TEXT_COLS = [1];
 
 const CATEGORY_HEADER = 'カテゴリ名';
+
+// コメントは「社長」と「現場」の2種別を1シートに貯める。行の蓄積がそのまま履歴になる。
+// 編集・削除のAPIはあえて作らない（「以前はどういう方針だったか」を後から消せない設計）。
+const COMMENT_HEADERS   = ['アイデアID', '種別', '投稿者', '本文', '投稿日時'];
+const COMMENT_TEXT_COLS = [1, 2, 3, 4, 5];
+const COMMENT_KINDS     = ['社長', '現場'];
+
+// 既読は「名前 × アイデア」ごとに最終既読日時を1行で持つ。
+// 名前で管理するので、同じ名前を設定していればPCとスマホで既読が同期する。
+const READ_HEADERS   = ['ユーザー名', 'アイデアID', '既読日時'];
+const READ_TEXT_COLS = [1, 2, 3];
+
+// 部門。ステータス（開発がどの段階か）とは別の軸で、
+// 「どちらの事業の商品か」を表す。一覧のタブで切り替える。
+const DEPT_OPTIONS = ['店舗部門', 'ぎゅう丸ラボ'];
 
 const STATUS_OPTIONS = ['提案中', '検討中', '採用', '見送り'];
 const UNIT_OPTIONS   = ['g', 'kg', 'ml', 'L', '個', '枚', '本', '袋', '缶', '大さじ', '小さじ', '適量'];
@@ -162,8 +191,13 @@ function apiCall(passcode, action, args) {
   checkPasscode_(passcode);
   args = args || [];
   switch (action) {
-    case 'getInitialData':   return getInitialData_();
+    case 'getInitialData':   return getInitialData_(args[0]);
     case 'getIdeaDetail':    return getIdeaDetail_(args[0]);
+    case 'postComment':      return postComment_(args[0], args[1], args[2]);
+    case 'markRead':         return markRead_(args[0], args[1]);
+    case 'verifyPresident':  return verifyPresident_(args[0]);
+    case 'renameTag':        return renameTag_(args[0], args[1]);
+    case 'deleteTag':        return deleteTag_(args[0]);
     case 'addIdea':          return addIdea_(args[0]);
     case 'updateIdea':       return updateIdea_(args[0], args[1]);
     case 'updateIdeaStatus': return updateIdeaStatus_(args[0], args[1]);
@@ -195,6 +229,23 @@ function checkPasscode_(passcode) {
   }
 }
 
+// 社長用の合い言葉。社長コメントの投稿時に毎回サーバー側で検証する。
+// 画面の「社長モード」はあくまで表示の切り替えで、本人確認はここが本体。
+function checkPresident_(pass) {
+  const stored = PropertiesService.getScriptProperties().getProperty('PRESIDENT_PASSCODE');
+  if (!stored) {
+    throw new Error('社長用合い言葉(PRESIDENT_PASSCODE)が未設定です。GASのプロジェクト設定＞スクリプト プロパティで設定してください。');
+  }
+  if (String(pass) !== String(stored)) {
+    throw new Error('社長用の合い言葉が違います');
+  }
+}
+
+function verifyPresident_(pass) {
+  checkPresident_(pass);
+  return { ok: true };
+}
+
 // ============================================================
 // シート取得（無ければヘッダー付きで新規作成）
 // ============================================================
@@ -224,21 +275,41 @@ function getIdeaSheet_() {
   return sh;
 }
 
-// 「提案者」列を廃止したときの移行。
-// 提案者は更新者（自動記録）と同じ人になることがほとんどで重複していたため列ごと削除した。
-// 既に運用が始まっているシートには古い列構成が残っているので、見つけたら1回だけ削る。
-// 移行済みのシートでは何もしないため、毎回呼んでも安全。
+// 既存シートの列構成を最新に合わせる移行処理。上から順に1回ずつ適用され、
+// 適用済みの項目は何もしないため、毎回呼んでも安全。
+//   v2: 「提案者」列の廃止（更新者と重複していたため削除）
+//   v3: 「部門」「社長コメント日時」列を末尾に追加。
+//       既存行の部門は、提案店舗が「ぎゅう丸ラボ」ならぎゅう丸ラボ、それ以外は店舗部門で初期化する
 function migrateIdeaSheet_(sh) {
   const lastCol = sh.getLastColumn();
   if (lastCol < 1) return;
-  const header = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(v => String(v).trim());
-  const idx = header.indexOf('提案者');
-  if (idx < 0) return;   // 移行済み
+  let header = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(v => String(v).trim());
 
-  sh.deleteColumn(idx + 1);   // 右側の列は自動で左へ詰まる
-  sh.getRange(1, 1, 1, IDEA_HEADERS.length).setValues([IDEA_HEADERS]);
-  const rows = Math.max(sh.getMaxRows() - 1, 1);
-  IDEA_TEXT_COLS.forEach(col => sh.getRange(2, col, rows, 1).setNumberFormat('@'));
+  // v2: 提案者列の削除
+  const authorIdx = header.indexOf('提案者');
+  if (authorIdx >= 0) {
+    sh.deleteColumn(authorIdx + 1);   // 右側の列は自動で左へ詰まる
+    header.splice(authorIdx, 1);
+  }
+
+  // v3: 部門・社長コメント日時の追加（必ず末尾に足す。途中に挿すと既存データがズレる）
+  const needDept = header.indexOf('部門') < 0;
+  if (authorIdx >= 0 || needDept) {
+    sh.getRange(1, 1, 1, IDEA_HEADERS.length).setValues([IDEA_HEADERS]);
+    const rows = Math.max(sh.getMaxRows() - 1, 1);
+    IDEA_TEXT_COLS.forEach(col => sh.getRange(2, col, rows, 1).setNumberFormat('@'));
+  }
+  if (needDept) {
+    const lastRow = sh.getLastRow();
+    if (lastRow >= 2) {
+      const stores = sh.getRange(2, IDEA_COL.store, lastRow - 1, 1).getValues();
+      const depts = stores.map(r => {
+        if (String(r[0]).trim() === '') return [''];   // 空行には書かない
+        return [String(r[0]).trim() === 'ぎゅう丸ラボ' ? 'ぎゅう丸ラボ' : DEPT_OPTIONS[0]];
+      });
+      sh.getRange(2, IDEA_COL.dept, lastRow - 1, 1).setValues(depts);
+    }
+  }
 }
 
 function getMaterialSheet_() {
@@ -284,6 +355,26 @@ function getCategorySheet_() {
   return sh;
 }
 
+function getCommentSheet_() {
+  const ss = getSpreadsheet_();
+  let sh = ss.getSheetByName(COMMENT_SHEET_NAME);
+  if (!sh) {
+    sh = ss.insertSheet(COMMENT_SHEET_NAME);
+    initSheet_(sh, COMMENT_HEADERS, COMMENT_TEXT_COLS, 5000);
+  }
+  return sh;
+}
+
+function getReadSheet_() {
+  const ss = getSpreadsheet_();
+  let sh = ss.getSheetByName(READ_SHEET_NAME);
+  if (!sh) {
+    sh = ss.insertSheet(READ_SHEET_NAME);
+    initSheet_(sh, READ_HEADERS, READ_TEXT_COLS, 5000);
+  }
+  return sh;
+}
+
 // ============================================================
 // 初期データ取得
 // ============================================================
@@ -293,7 +384,10 @@ function getCategorySheet_() {
 //
 // ※アイデアが数百件を超えて初回表示が重くなってきたら、ここを一覧用の軽い列だけに絞り、
 //   詳細は getIdeaDetail に寄せる（写真URLと原価だけあれば一覧は描ける）。
-function getInitialData_() {
+// userName は未読判定に使う（その人の既読日時マップを返す）。
+// 名前を設定していない人には空マップを返し、社長コメントのある案がすべて未読として見える
+// （＝安全側に倒す。見逃しより「もう読んだのにまた出る」方がマシ）。
+function getInitialData_(userName) {
   const ideas = getIdeas_();
   return {
     ideas: ideas,
@@ -301,6 +395,8 @@ function getInitialData_() {
     events: getEvents_(),
     categories: getCategoryList_(),
     tags: collectTags_(ideas),
+    readMap: getReadMap_(userName),
+    deptOptions: DEPT_OPTIONS,
     statusOptions: STATUS_OPTIONS,
     unitOptions: UNIT_OPTIONS,
     yieldUnitOptions: YIELD_UNIT_OPTIONS,
@@ -333,7 +429,8 @@ function getIdeaDetail_(id) {
   const row = sh.getRange(rowNum, 1, 1, IDEA_HEADERS.length).getValues()[0];
   return {
     idea: rowToIdea_(row, rowNum),
-    materials: getMaterialsFor_(id)
+    materials: getMaterialsFor_(id),
+    comments: getCommentsFor_(id)
   };
 }
 
@@ -388,11 +485,16 @@ function rowToIdea_(row, rowNum) {
     photo1: cell_(row, IDEA_COL.photo1),
     photo2: cell_(row, IDEA_COL.photo2),
     updatedAt: cell_(row, IDEA_COL.updatedAt),
-    updatedBy: cell_(row, IDEA_COL.updatedBy)
+    updatedBy: cell_(row, IDEA_COL.updatedBy),
+    // 移行前の既存行など部門が空のものは店舗部門として扱う（絞り込みから漏れないように）
+    dept: cell_(row, IDEA_COL.dept) || DEPT_OPTIONS[0],
+    presAt: cell_(row, IDEA_COL.presAt)
   };
 }
 
-function ideaToRow_(id, data, costs, photo1, photo2, updatedAt) {
+// presAt はフォームからは編集できない値なので、呼び出し側が
+// 「新規なら空」「更新なら旧行の値」を明示的に渡す（dataに紛れ込ませない）
+function ideaToRow_(id, data, costs, photo1, photo2, updatedAt, presAt) {
   const row = new Array(IDEA_HEADERS.length).fill('');
   const set = (col, v) => { row[col - 1] = v; };
 
@@ -427,6 +529,8 @@ function ideaToRow_(id, data, costs, photo1, photo2, updatedAt) {
   set(IDEA_COL.photo2, photo2 || '');
   set(IDEA_COL.updatedAt, updatedAt);
   set(IDEA_COL.updatedBy, String(data.updatedBy || '').trim());
+  set(IDEA_COL.dept, DEPT_OPTIONS.indexOf(data.dept) >= 0 ? data.dept : DEPT_OPTIONS[0]);
+  set(IDEA_COL.presAt, presAt || '');
 
   return row;
 }
@@ -620,7 +724,7 @@ function addIdea_(data) {
     const photo1 = resolvePhoto_(data.photo1, '');
     const photo2 = resolvePhoto_(data.photo2, '');
     const updatedAt = nowStr_();
-    const row = ideaToRow_(id, data, costs, photo1, photo2, updatedAt);
+    const row = ideaToRow_(id, data, costs, photo1, photo2, updatedAt, '');
 
     const startRow = sh.getLastRow() + 1;
     applyIdeaTextFormat_(sh, startRow);
@@ -673,9 +777,11 @@ function updateIdea_(id, data) {
     const photo1 = resolvePhoto_(data.photo1, cell_(oldRow, IDEA_COL.photo1));
     const photo2 = resolvePhoto_(data.photo2, cell_(oldRow, IDEA_COL.photo2));
     const updatedAt = nowStr_();
-    // 提案日は登録時のものを引き継ぐ（編集で今日に書き換わってしまわないように）
+    // 提案日は登録時のものを引き継ぐ（編集で今日に書き換わってしまわないように）。
+    // 社長コメント日時もフォーム編集では変わらない値なので旧行から引き継ぐ
     const merged = Object.assign({}, data, { date: data.date || cell_(oldRow, IDEA_COL.date) });
-    const row = ideaToRow_(id, merged, costs, photo1, photo2, updatedAt);
+    const row = ideaToRow_(id, merged, costs, photo1, photo2, updatedAt,
+                           cell_(oldRow, IDEA_COL.presAt));
 
     applyIdeaTextFormat_(sh, rowNum);
     sh.getRange(rowNum, 1, 1, row.length).setValues([row]);
@@ -751,6 +857,170 @@ function validateIdeaInput_(data) {
   if (data.month && !/^\d{4}\/\d{2}$/.test(String(data.month))) {
     throw new Error('採用月の形式が不正です: ' + data.month);
   }
+  if (data.dept && DEPT_OPTIONS.indexOf(data.dept) < 0) {
+    throw new Error('不正な部門です: ' + data.dept);
+  }
+}
+
+// ============================================================
+// コメント（社長からのコメント・方針／現場からのコメント）
+// ============================================================
+function getCommentsFor_(ideaId) {
+  const sh = getCommentSheet_();
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return [];
+  return sh.getRange(2, 1, lastRow - 1, COMMENT_HEADERS.length).getValues()
+    .filter(r => String(r[0]) === String(ideaId))
+    .map(r => ({
+      kind: r[1] || '現場',
+      author: r[2] || '',
+      text: r[3] || '',
+      at: r[4] || ''
+    }));
+    // 追記しかしないシートなので行順＝時系列。日時文字列でソートし直すと
+    // 同じ「分」に投稿された複数コメントの前後関係が崩れるため、行順のまま返す
+}
+
+// payload = { kind: '社長'|'現場', text, name }
+// 種別が「社長」のときは presidentPass をサーバー側で毎回検証する。
+// 社長投稿はアイデア行の「社長コメント日時」も更新し、これが全員の未読バッジの引き金になる。
+function postComment_(ideaId, payload, presidentPass) {
+  payload = payload || {};
+  const kind = payload.kind;
+  const text = String(payload.text || '').trim();
+  const name = String(payload.name || '').trim();
+  if (COMMENT_KINDS.indexOf(kind) < 0) throw new Error('不正なコメント種別です: ' + kind);
+  if (!text) throw new Error('コメントを入力してください');
+  if (!name) throw new Error('名前を設定してください（画面右上の「名前を設定」から）');
+  if (kind === '社長') checkPresident_(presidentPass);
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const ideaSh = getIdeaSheet_();
+    const rowNum = findIdeaRow_(ideaSh, ideaId);
+    if (rowNum < 0) throw new Error('アイデアが見つかりません: ' + ideaId);
+
+    const now = nowStr_();
+    const sh = getCommentSheet_();
+    const commentRow = sh.getLastRow() + 1;
+    COMMENT_TEXT_COLS.forEach(col => sh.getRange(commentRow, col, 1, 1).setNumberFormat('@'));
+    sh.getRange(commentRow, 1, 1, COMMENT_HEADERS.length)
+      .setValues([[ideaId, kind, name, text, now]]);
+
+    if (kind === '社長') {
+      ideaSh.getRange(rowNum, IDEA_COL.presAt, 1, 1).setNumberFormat('@');
+      ideaSh.getRange(rowNum, IDEA_COL.presAt, 1, 1).setValues([[now]]);
+      // 投稿した本人が自分の投稿を「未読」として見せられても意味がないので、即座に既読にする
+      upsertRead_(name, ideaId, now);
+    }
+
+    const row = ideaSh.getRange(rowNum, 1, 1, IDEA_HEADERS.length).getValues()[0];
+    return {
+      idea: rowToIdea_(row, rowNum),
+      comments: getCommentsFor_(ideaId)
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ============================================================
+// 未読・既読
+// ============================================================
+// その人の { アイデアID: 最終既読日時 } を返す。
+// 未読判定はクライアント側で「社長コメント日時 > 自分の既読日時」で行う。
+function getReadMap_(userName) {
+  const name = String(userName || '').trim();
+  const map = {};
+  if (!name) return map;
+  const sh = getReadSheet_();
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return map;
+  sh.getRange(2, 1, lastRow - 1, READ_HEADERS.length).getValues().forEach(r => {
+    if (String(r[0]).trim() === name) map[String(r[1])] = String(r[2] || '');
+  });
+  return map;
+}
+
+function markRead_(ideaId, userName) {
+  const name = String(userName || '').trim();
+  if (!name) return { ok: false };   // 名前未設定の人は既読を記録しようがない（エラーにはしない）
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    upsertRead_(name, ideaId, nowStr_());
+    return { ok: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// 「名前 × アイデア」の行があれば日時を更新、無ければ追記する
+function upsertRead_(name, ideaId, at) {
+  const sh = getReadSheet_();
+  const lastRow = sh.getLastRow();
+  if (lastRow >= 2) {
+    const values = sh.getRange(2, 1, lastRow - 1, 2).getValues();
+    const idx = values.findIndex(r =>
+      String(r[0]).trim() === String(name) && String(r[1]) === String(ideaId));
+    if (idx >= 0) {
+      sh.getRange(idx + 2, 3, 1, 1).setNumberFormat('@');
+      sh.getRange(idx + 2, 3, 1, 1).setValues([[at]]);
+      return;
+    }
+  }
+  const rowNum = sh.getLastRow() + 1;
+  READ_TEXT_COLS.forEach(col => sh.getRange(rowNum, col, 1, 1).setNumberFormat('@'));
+  sh.getRange(rowNum, 1, 1, READ_HEADERS.length).setValues([[name, ideaId, at]]);
+}
+
+// ============================================================
+// タグの一括編集
+// ============================================================
+// タグはマスタを持たない自由入力なので、「編集」＝全アイデアのタグ列を横断で書き換えること。
+// 改名は重複整理（例：「SNS映え」と「SNSばえ」の統一）にも使える。
+function renameTag_(oldName, newName) {
+  const trimmedNew = validateMasterName_(newName, 'タグ名');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    return { renamed: rewriteTagColumn_(String(oldName).trim(), trimmedNew) };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function deleteTag_(name) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    return { removed: rewriteTagColumn_(String(name).trim(), null) };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// タグ列を全行走査し、target を newName に置換（newName=null なら削除）した行数を返す。
+// joinList_ を通すので、改名先が既に付いている行では自動的に重複が1つにまとまる。
+function rewriteTagColumn_(target, newName) {
+  const sh = getIdeaSheet_();
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return 0;
+  const range = sh.getRange(2, IDEA_COL.tags, lastRow - 1, 1);
+  const values = range.getValues();
+  let count = 0;
+  values.forEach(r => {
+    const tags = splitList_(r[0]);
+    if (tags.indexOf(target) < 0) return;
+    const next = newName === null
+      ? tags.filter(t => t !== target)
+      : tags.map(t => (t === target ? newName : t));
+    r[0] = joinList_(next);
+    count++;
+  });
+  if (count) range.setValues(values);
+  return count;
 }
 
 // ============================================================
