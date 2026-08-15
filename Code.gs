@@ -377,14 +377,17 @@ function migrateIdeaSheet_(sh) {
   }
 }
 
-// 使わなくなったシートの後片付け。
-// 「既読」シートは、既読を名前ごとにサーバー管理していた頃の名残。
-// 既読は端末ローカル(localStorage)方式に変えたので不要になった。
-// データが入っている場合は消さない（想定外の使われ方をしていたら残す方が安全）。
+// 使わなくなったシートの後片付け。運用をやめたシートを削除する。
+//   「既読」  … 既読を名前ごとにサーバー管理していた頃の名残（今はNew方式で不要）
+//   「イベント」… 採用月/イベント運用の廃止で不要
+// どちらもアプリのコードからは一切参照していないので、残っていれば削除して問題ない。
 function cleanupLegacySheets_() {
   const ss = getSpreadsheet_();
-  const sh = ss.getSheetByName('既読');
-  if (sh && sh.getLastRow() <= 1) ss.deleteSheet(sh);
+  ['既読', 'イベント'].forEach(function(nm) {
+    const sh = ss.getSheetByName(nm);
+    // シートは最低1枚必要なので、最後の1枚のときは消さない（通常は該当しない）
+    if (sh && ss.getSheets().length > 1) ss.deleteSheet(sh);
+  });
 }
 
 function getMaterialSheet_() {
