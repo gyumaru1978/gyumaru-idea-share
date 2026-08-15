@@ -147,12 +147,15 @@ img{max-width:100%;display:block}
 .rate-bad{color:var(--danger) !important}
 
 /* カテゴリごとの見出し。タグではなくカテゴリで区切るのは、タグが1案に複数付くため
-   タグで区切ると同じ案が複数の見出しの下に重複して現れてしまうから */
-.ghead{display:flex;align-items:center;gap:.5rem;margin:1.1rem 0 .55rem;padding-bottom:.3rem;
-  border-bottom:2px solid var(--brand-light)}
+   タグで区切ると同じ案が複数の見出しの下に重複して現れてしまうから。
+   はっきりした帯にし、スクロール中も今どのカテゴリを見ているか分かるよう上部に貼り付ける。 */
+.ghead{display:flex;align-items:center;gap:.6rem;margin:1.2rem 0 .7rem;padding:.5rem .85rem;
+  background:var(--brand);border-radius:9px;box-shadow:var(--shadow);
+  position:sticky;top:var(--ghead-top,96px);z-index:6}
 .ghead:first-child{margin-top:.2rem}
-.ghead h3{font-size:.85rem;font-weight:700;color:var(--brand-dark)}
-.ghead .gn{font-size:.7rem;color:var(--ink-faint);font-weight:600}
+.ghead h3{font-size:.95rem;font-weight:800;color:#fff;letter-spacing:.03em;flex:0 0 auto}
+.ghead .gn{font-size:.72rem;color:#fff;font-weight:700;background:rgba(255,255,255,.22);
+  border-radius:999px;padding:.1rem .55rem}
 .empty{text-align:center;padding:3.5rem 1rem;color:var(--ink-faint)}
 .empty .ic{font-size:2.5rem;margin-bottom:.5rem}
 
@@ -1076,7 +1079,18 @@ function filtered(){
   });
 }
 
+// カテゴリ見出しの貼り付き位置を、ヘッダー＋ナビの実際の高さに合わせる（ナビの高さは環境で変わる）
+function updateGheadTop(){
+  var nav = document.querySelector('.nav');
+  if(nav){
+    var b = Math.round(nav.getBoundingClientRect().bottom);
+    document.documentElement.style.setProperty('--ghead-top', (b > 0 ? b : 96) + 'px');
+  }
+}
+on(window, 'resize', updateGheadTop);
+
 function render(){
+  updateGheadTop();
   var rows = filtered();
   renderStats(rows, statsBase());
   var box = q('list');
