@@ -71,7 +71,10 @@ img{max-width:100%;display:block}
 
 /* ===== サマリー ===== */
 .stats{display:flex;gap:.5rem;overflow-x:auto;padding:.1rem .1rem .8rem;scroll-snap-type:x proximity}
-.stat{flex:0 0 auto;scroll-snap-align:start;background:#fff;border-radius:10px;padding:.55rem .85rem;box-shadow:var(--shadow);min-width:6.5rem}
+.stat{flex:0 0 auto;scroll-snap-align:start;background:#fff;border-radius:10px;padding:.55rem .85rem;
+  box-shadow:var(--shadow);min-width:6.5rem;text-align:left;border:2px solid transparent;cursor:pointer;transition:border-color .12s}
+.stat:hover{border-color:var(--brand-light)}
+.stat.on{border-color:var(--brand);background:var(--brand-tint)}
 .stat b{display:block;font-size:1.15rem;color:var(--brand-dark);line-height:1.2}
 .stat span{font-size:.68rem;color:var(--ink-faint);font-weight:600}
 
@@ -336,13 +339,6 @@ img{max-width:100%;display:block}
       <button data-dept="店舗部門">店舗部門</button>
       <button data-dept="ぎゅう丸ラボ">ぎゅう丸ラボ</button>
     </div>
-    <!-- ステータスのワンタップ切替（すべて／アイデア／採用） -->
-    <div class="seg" id="segStatus">
-      <button data-status="" class="on">すべて</button>
-      <button data-status="アイデア">アイデア</button>
-      <button data-status="採用">採用</button>
-    </div>
-
     <div class="filters">
       <button id="filtToggle" class="filt-toggle">▸ 絞り込み <span id="filtCount"></span></button>
       <div id="filtBody" class="filt-body hidden">
@@ -610,7 +606,7 @@ var D = {  // サーバーから取得したマスタ類
   statusOptions:['アイデア','採用'], unitOptions:[], yieldUnitOptions:[],
   allergenOptions:[], storageOptions:[], today:''
 };
-var F = { status:'', store:'', cats:[], tags:[], q:'', group:'none', dept:'' };
+var F = { status:'', unread:false, store:'', cats:[], tags:[], q:'', group:'none', dept:'' };
 var FORM = { id:null, materials:[], status:'アイデア', cats:[], tags:[], allergens:[], storage:'',
              photo1:'', photo2:'', posters:[], updatedAt:'', dept:'店舗部門', deptTouched:false };
 var DETAIL = null;        // 現在詳細を開いているアイデア
@@ -789,20 +785,17 @@ function syncSegDept(){
   });
 }
 
-// ステータスタブ（すべて／アイデア／採用）
-on(q('segStatus'), 'click', function(e){
-  var b = e.target.closest('button');
-  if(!b) return;
-  F.status = b.dataset.status;
-  syncSegStatus();
+// サマリーの数字タイル（未読／表示中／アイデア／採用）自体を絞り込みボタンにする
+on(q('stats'), 'click', function(e){
+  var t = e.target.closest('.stat');
+  if(!t) return;
+  var f = t.dataset.filter;
+  if(f === 'unread'){ F.unread = !F.unread; F.status = ''; }         // 未読トグル
+  else if(f === 'all'){ F.unread = false; F.status = ''; }           // 表示中＝絞り込み解除
+  else { F.status = (F.status === f) ? '' : f; F.unread = false; }   // アイデア／採用（再クリックで解除）
   saveFilter();
   render();
 });
-function syncSegStatus(){
-  document.querySelectorAll('#segStatus button').forEach(function(x){
-    x.classList.toggle('on', x.dataset.status === (F.status || ''));
-  });
-}
 
 // ============================================================
 // 絞り込み
@@ -846,9 +839,8 @@ on(q('fGroup'), 'click', function(e){ var b = e.target.closest('.pick'); if(!b) 
   F.group = b.dataset.val; renderFilterPicks(); saveFilter(); render(); });
 on(q('fQ'), 'input', function(){ F.q = q('fQ').value; saveFilter(); render(); });
 on(q('fReset'), 'click', function(){
-  F.status = ''; F.store = ''; F.cats = []; F.tags = []; F.q = ''; F.group = 'none';
+  F.status = ''; F.unread = false; F.store = ''; F.cats = []; F.tags = []; F.q = ''; F.group = 'none';
   q('fQ').value = '';
-  syncSegStatus();
   renderFilterPicks(); saveFilter(); render();
 });
 function toggleIn(arr, v){
@@ -871,7 +863,6 @@ function restoreFilter(){
     }
   }catch(e){}
   syncSegDept();
-  syncSegStatus();
   q('fQ').value = F.q || '';
 }
 
@@ -881,6 +872,7 @@ function restoreFilter(){
 function filtered(){
   return D.ideas.filter(function(i){
     if(F.dept && i.dept !== F.dept) return false;
+    if(F.unread && !isUnread(i)) return false;
     if(F.status && i.status !== F.status) return false;
     if(F.store && i.store !== F.store) return false;
     if(F.cats.length && !F.cats.every(function(c){ return (i.categories||[]).indexOf(c) >= 0; })) return false;
@@ -903,7 +895,7 @@ function filtered(){
 
 function render(){
   var rows = filtered();
-  renderStats(rows);
+  renderStats(rows, statsBase());
   var box = q('list');
 
   if(!rows.length){
@@ -948,16 +940,37 @@ function groupedHtml(rows, key){
   }).join('');
 }
 
-// 原価は一覧では出さず、詳細画面だけで見せる（一覧は「どんな案があるか」を追う場所）
-function renderStats(rows){
-  function count(s){ return rows.filter(function(i){ return i.status === s; }).length; }
-  var unread = rows.filter(isUnread).length;
+// サマリーの数字タイルは絞り込みボタンでもある。
+// タイルの件数は「ステータス・未読以外の条件（部門/店舗/カテゴリ/タグ/検索）を適用した集合」で数える。
+// こうすると、部門を切り替えたときにその中でのアイデア/採用/未読の件数が出る。
+function statsBase(){
+  return D.ideas.filter(function(i){
+    if(F.dept && i.dept !== F.dept) return false;
+    if(F.store && i.store !== F.store) return false;
+    if(F.cats.length && !F.cats.every(function(c){ return (i.categories||[]).indexOf(c) >= 0; })) return false;
+    if(F.tags.length && !F.tags.every(function(t){ return (i.tags||[]).indexOf(t) >= 0; })) return false;
+    if(F.q){
+      var hay = [i.name, i.catch, i.store, i.memo, i.steps,
+                 (i.categories||[]).join(' '), (i.tags||[]).join(' ')].join(' ').toLowerCase();
+      if(hay.indexOf(F.q.toLowerCase()) < 0) return false;
+    }
+    return true;
+  });
+}
+function renderStats(rows, base){
+  function count(s){ return base.filter(function(i){ return i.status === s; }).length; }
+  var unread = base.filter(isUnread).length;
+  function tile(filter, num, label, active, danger){
+    return '<button class="stat' + (active ? ' on' : '') + '" data-filter="' + filter + '">' +
+      '<b' + (danger && num ? ' style="color:var(--danger)"' : '') + '>' + num + '</b>' +
+      '<span>' + label + '</span></button>';
+  }
+  var none = !F.unread && !F.status;
   q('stats').innerHTML =
-    '<div class="stat"><b' + (unread ? ' style="color:var(--danger)"' : '') + '>' + unread +
-      '</b><span>未読</span></div>' +
-    '<div class="stat"><b>' + rows.length + '</b><span>表示中</span></div>' +
-    '<div class="stat"><b>' + count('アイデア') + '</b><span>アイデア</span></div>' +
-    '<div class="stat"><b>' + count('採用') + '</b><span>採用</span></div>';
+    tile('unread', unread, '未読', F.unread, true) +
+    tile('all', rows.length, '表示中', none, false) +
+    tile('アイデア', count('アイデア'), 'アイデア', F.status === 'アイデア', false) +
+    tile('採用', count('採用'), '採用', F.status === '採用', false);
 }
 
 function cardHtml(i){
