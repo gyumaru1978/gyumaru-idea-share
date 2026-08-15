@@ -688,7 +688,9 @@ var D = {  // サーバーから取得したマスタ類
   statusOptions:['アイデア','採用'], unitOptions:[], yieldUnitOptions:[],
   allergenOptions:[], storageOptions:[], today:''
 };
-var F = { status:'', unread:false, store:'', cats:[], tags:[], q:'', group:'none', dept:'' };
+// group は一覧の並び順。既定は「カテゴリごと」にまとめて表示。
+// gv は「カテゴリ既定化」を古い端末へ1回だけ反映するためのバージョン印
+var F = { status:'', unread:false, store:'', cats:[], tags:[], q:'', group:'category', dept:'', gv:0 };
 var FORM = { id:null, materials:[], status:'アイデア', cats:[], tags:[], allergens:[], storage:'',
              photo1:'', photo2:'', posters:[], newPosters:[], updatedAt:'', dept:'店舗部門', deptTouched:false };
 var DETAIL = null;        // 現在詳細を開いているアイデア
@@ -1007,7 +1009,7 @@ on(q('fGroup'), 'click', function(e){ var b = e.target.closest('.pick'); if(!b) 
   F.group = b.dataset.val; renderFilterPicks(); saveFilter(); render(); });
 on(q('fQ'), 'input', function(){ F.q = q('fQ').value; saveFilter(); render(); });
 on(q('fReset'), 'click', function(){
-  F.status = ''; F.unread = false; F.store = ''; F.cats = []; F.tags = []; F.q = ''; F.group = 'none';
+  F.status = ''; F.unread = false; F.store = ''; F.cats = []; F.tags = []; F.q = ''; F.group = 'category';
   q('fQ').value = '';
   renderFilterPicks(); saveFilter(); render();
 });
@@ -1030,6 +1032,9 @@ function restoreFilter(){
       F.cats = F.cats || []; F.tags = F.tags || [];
     }
   }catch(e){}
+  // 「カテゴリごと」を既定にした変更を、古い設定が残っている端末へ1回だけ反映する。
+  // 以降にユーザーが並び順を変えれば、その選択がそのまま保存され続ける。
+  if(F.gv !== 1){ F.group = 'category'; F.gv = 1; saveFilter(); }
   syncSegDept();
   q('fQ').value = F.q || '';
 }
