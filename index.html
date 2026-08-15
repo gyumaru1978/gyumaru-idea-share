@@ -269,6 +269,15 @@ img{max-width:100%;display:block}
 .prow .pstore{flex:0 0 auto;min-width:8rem;padding:.5rem .6rem;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:.85rem}
 .prow > input{flex:1;min-width:8rem;padding:.5rem .65rem;border:1px solid var(--line);border-radius:8px;font-size:.85rem}
 
+/* ===== マスタの入口メニュー（階層構造） ===== */
+.mmenu{display:grid;gap:.5rem}
+.mmenu-item{display:flex;align-items:center;gap:.6rem;width:100%;text-align:left;background:#fff;
+  border-radius:12px;box-shadow:var(--shadow);padding:.9rem 1rem}
+.mmenu-item:hover{box-shadow:var(--shadow-lg)}
+.mmenu-t{font-size:.92rem;font-weight:700;flex:0 0 auto}
+.mmenu-s{flex:1;font-size:.72rem;color:var(--ink-faint);font-weight:600}
+.mmenu-arrow{flex:0 0 auto;font-size:1.3rem;color:var(--ink-faint);line-height:1}
+
 /* ===== マスタ一覧 ===== */
 .mlist{display:grid;gap:.4rem}
 .mrow{display:flex;align-items:center;gap:.4rem;padding:.5rem .55rem;background:var(--bg);border-radius:8px}
@@ -487,7 +496,18 @@ img{max-width:100%;display:block}
 
 <!-- ========== マスタ ========== -->
 <section id="view-master" class="hidden">
-  <div class="panel">
+  <!-- マスタの入口メニュー。ここから各マスタに入る（階層構造。長いスクロールを避ける） -->
+  <div id="masterMenu" class="mmenu">
+    <button class="mmenu-item" data-mkey="material"><span class="mmenu-t">材料マスタ</span><span class="mmenu-s" id="mmenu-material"></span><span class="mmenu-arrow">›</span></button>
+    <button class="mmenu-item" data-mkey="store"><span class="mmenu-t">店舗マスタ</span><span class="mmenu-s" id="mmenu-store"></span><span class="mmenu-arrow">›</span></button>
+    <button class="mmenu-item" data-mkey="category"><span class="mmenu-t">カテゴリマスタ</span><span class="mmenu-s" id="mmenu-category"></span><span class="mmenu-arrow">›</span></button>
+    <button class="mmenu-item" data-mkey="tag"><span class="mmenu-t">タグマスタ</span><span class="mmenu-s" id="mmenu-tag"></span><span class="mmenu-arrow">›</span></button>
+    <button class="mmenu-item" data-mkey="president"><span class="mmenu-t">社長モード</span><span class="mmenu-s" id="mmenu-president"></span><span class="mmenu-arrow">›</span></button>
+  </div>
+
+  <button id="masterBack" class="btn btn-line btn-sm hidden" style="margin-bottom:.7rem">← マスタ一覧へ戻る</button>
+
+  <div class="panel mpanel hidden" data-mkey="material">
     <h3>材料マスタ</h3>
     <p style="font-size:.75rem;color:var(--ink-faint);margin-bottom:.7rem">
       材料ごとに「基準量（例：1000g／1個）あたりの単価・栄養・アレルギー・仕入れ先」を登録します。
@@ -495,7 +515,7 @@ img{max-width:100%;display:block}
     <div id="mmList" class="mlist"></div>
     <button id="mm-add" class="btn btn-primary btn-sm" style="margin-top:.6rem">＋ 材料を追加</button>
   </div>
-  <div class="panel">
+  <div class="panel mpanel hidden" data-mkey="store">
     <h3>店舗マスタ</h3>
     <p style="font-size:.75rem;color:var(--ink-faint);margin-bottom:.7rem">
       アイデアを出した店舗の一覧です。使用中の店舗は削除できません。</p>
@@ -505,7 +525,7 @@ img{max-width:100%;display:block}
       <button id="st-add" class="btn btn-primary btn-sm">追加</button>
     </div>
   </div>
-  <div class="panel">
+  <div class="panel mpanel hidden" data-mkey="category">
     <h3>カテゴリマスタ</h3>
     <p style="font-size:.75rem;color:var(--ink-faint);margin-bottom:.7rem">
       商品の種類です。自由なラベルは「タグ」を使ってください。</p>
@@ -515,7 +535,7 @@ img{max-width:100%;display:block}
       <button id="ct-add" class="btn btn-primary btn-sm">追加</button>
     </div>
   </div>
-  <div class="panel">
+  <div class="panel mpanel hidden" data-mkey="tag">
     <h3>タグマスタ</h3>
     <p style="font-size:.75rem;color:var(--ink-faint);margin-bottom:.7rem">
       登録されているタグの一覧です。改名・削除はそのタグが付いた全アイデアに反映されます。
@@ -527,7 +547,7 @@ img{max-width:100%;display:block}
       <button id="tg-add" class="btn btn-primary btn-sm">追加</button>
     </div>
   </div>
-  <div class="panel">
+  <div class="panel mpanel hidden" data-mkey="president">
     <h3>社長モード</h3>
     <p style="font-size:.75rem;color:var(--ink-faint);margin-bottom:.7rem">
       社長用の合い言葉を入力すると、各商品に「社長からのコメント・方針」を投稿できるようになります。
@@ -835,8 +855,39 @@ function switchView(name){
   document.querySelectorAll('.nav-btn').forEach(function(b){
     b.classList.toggle('on', b.dataset.view === name);
   });
+  if(name === 'master') closeMaster();   // マスタは毎回メニューから始める
   window.scrollTo(0, 0);
 }
+
+// ---- マスタの階層ナビ（メニュー → 各マスタ） ----
+function closeMaster(){
+  q('masterMenu').classList.remove('hidden');
+  q('masterBack').classList.add('hidden');
+  document.querySelectorAll('#view-master .mpanel').forEach(function(p){ p.classList.add('hidden'); });
+  renderMasterMenu();
+}
+function openMaster(key){
+  q('masterMenu').classList.add('hidden');
+  q('masterBack').classList.remove('hidden');
+  document.querySelectorAll('#view-master .mpanel').forEach(function(p){
+    p.classList.toggle('hidden', p.dataset.mkey !== key);
+  });
+  window.scrollTo(0, 0);
+}
+// メニュー項目に件数などの補足を出す
+function renderMasterMenu(){
+  var el;
+  if((el = q('mmenu-material'))) el.textContent = (D.materialMasters||[]).length + '件';
+  if((el = q('mmenu-store'))) el.textContent = (D.stores||[]).length + '件';
+  if((el = q('mmenu-category'))) el.textContent = (D.categories||[]).length + '件';
+  if((el = q('mmenu-tag'))) el.textContent = (D.tags||[]).length + '件';
+  if((el = q('mmenu-president'))) el.textContent = PRES ? '有効中' : '';
+}
+on(q('masterMenu'), 'click', function(e){
+  var b = e.target.closest('.mmenu-item');
+  if(b) openMaster(b.dataset.mkey);
+});
+on(q('masterBack'), 'click', closeMaster);
 document.querySelectorAll('.nav-btn').forEach(function(b){
   on(b, 'click', function(){
     if(b.dataset.view === 'form') openForm(null);
@@ -1205,7 +1256,7 @@ function detailHtml(i, materials, comments, posters){
   if(PRES){
     h += '<div class="cform">' +
          '<textarea id="presInput" placeholder="この商品のイメージ・方向性・決定事項・方針変更など"></textarea>' +
-         '<div class="crow"><input id="presName" placeholder="お名前（任意）" value="' + esc(ME) + '">' +
+         '<div class="crow"><input id="presName" placeholder="お名前（任意）" value="">' +
          '<button type="button" id="presPost" class="btn btn-primary btn-sm">投稿する</button></div></div>';
   }
   h += '</div>';
@@ -1221,7 +1272,7 @@ function detailHtml(i, materials, comments, posters){
   }).join('') || '<div style="font-size:.8rem;color:var(--ink-faint)">まだコメントはありません</div>';
   h += '<div class="cform">' +
        '<textarea id="toPresInput" placeholder="社長コメントへの質問・意見、気づいたことなど"></textarea>' +
-       '<div class="crow"><input id="toPresName" placeholder="お名前（任意）" value="' + esc(ME) + '">' +
+       '<div class="crow"><input id="toPresName" placeholder="お名前（任意）" value="">' +
        '<button type="button" id="toPresPost" class="btn btn-line btn-sm">投稿する</button></div></div></div>';
 
   // 材料・原価
@@ -1335,8 +1386,8 @@ function submitComment(kind, textId, nameId, btn){
   if(!DETAIL) return;
   var text = String(q(textId).value || '').trim();
   if(!text){ toast('コメントを入力してください', true); return; }
+  // コメントの名前は任意。入力しても端末には記憶しない（毎回空欄で始める）
   var name = String(q(nameId).value || '').trim();
-  if(name) setMe(name);   // 次回以降の入力欄に引き継ぐ
 
   var id = DETAIL.id;
   var fromPres = kind === KIND_FROM_PRES;
@@ -2106,6 +2157,7 @@ function renderPresPanel(){
   q('presForm').classList.toggle('hidden', onMode);
   q('pres-off').classList.toggle('hidden', !onMode);
   q('presBadge').classList.toggle('hidden', !onMode);
+  renderMasterMenu();   // マスタメニューの「有効中」表示も合わせて更新
 }
 on(q('pres-on'), 'click', function(){
   var pass = String(q('pres-pass').value || '').trim();
