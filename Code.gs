@@ -66,8 +66,8 @@ const MATERIAL_SHEET_NAME = '材料';
 const STORE_SHEET_NAME    = '店舗';
 const EVENT_SHEET_NAME    = 'イベント';
 const CATEGORY_SHEET_NAME = 'カテゴリ';
+const TAG_SHEET_NAME      = 'タグ';
 const COMMENT_SHEET_NAME  = 'コメント';
-const READ_SHEET_NAME     = '既読';
 const PHOTO_FOLDER_NAME   = '新商品アイデア_写真';
 
 // ============================================================
@@ -128,17 +128,19 @@ const STORE_HEADERS   = ['店舗名', '表示順'];
 const STORE_TEXT_COLS = [1];
 
 const CATEGORY_HEADER = 'カテゴリ名';
+const TAG_HEADER      = 'タグ名';
 
-// コメントは「社長」と「現場」の2種別を1シートに貯める。行の蓄積がそのまま履歴になる。
+// コメントは「社長から」（社長の方針）と「社長へ」（それに対する質問・意見）の
+// 2種別を1シートに貯める。行の蓄積がそのまま履歴になる。
 // 編集・削除のAPIはあえて作らない（「以前はどういう方針だったか」を後から消せない設計）。
+//
+// 投稿者は任意入力。社員ごとのアカウント管理はしない方針なので、
+// 「誰の質問か分かると社長が返事しやすい」程度のラベルにとどめる。
 const COMMENT_HEADERS   = ['アイデアID', '種別', '投稿者', '本文', '投稿日時'];
 const COMMENT_TEXT_COLS = [1, 2, 3, 4, 5];
-const COMMENT_KINDS     = ['社長', '現場'];
-
-// 既読は「名前 × アイデア」ごとに最終既読日時を1行で持つ。
-// 名前で管理するので、同じ名前を設定していればPCとスマホで既読が同期する。
-const READ_HEADERS   = ['ユーザー名', 'アイデアID', '既読日時'];
-const READ_TEXT_COLS = [1, 2, 3];
+const KIND_FROM_PRES    = '社長から';
+const KIND_TO_PRES      = '社長へ';
+const COMMENT_KINDS     = [KIND_FROM_PRES, KIND_TO_PRES];
 
 // 部門。ステータス（開発がどの段階か）とは別の軸で、
 // 「どちらの事業の商品か」を表す。一覧のタブで切り替える。
@@ -156,9 +158,10 @@ const ALLERGEN_OPTIONS = [
 ];
 const STORAGE_OPTIONS = ['常温', '冷蔵', '冷凍'];
 
-// タグは自由入力だが、まだ1件も登録が無いと何を入れてよいか分からないので候補を用意しておく。
-// 実際に使われたタグは自動で候補に追加されていく（collectTags_）。
-const TAG_SUGGESTIONS = [
+// タグシートの初期値。運用が始まったら「マスタ」画面から自由に追加・改名・削除・並び替えできる。
+// カテゴリと違い、アイデア入力画面からその場で新しいタグを作ることもでき、
+// 作られたタグは自動的にこのマスタへ追加される。
+const TAG_SEED = [
   'SNS映え', '春の定番', '夏の定番', '秋の定番', '冬の定番',
   '低カロリー', '高単価', 'テイクアウト向き', '子供向け', '土産向き',
   '地元食材', '時短', '既存設備で作れる', '試作済み'
@@ -194,10 +197,11 @@ function apiCall(passcode, action, args) {
     case 'getInitialData':   return getInitialData_(args[0]);
     case 'getIdeaDetail':    return getIdeaDetail_(args[0]);
     case 'postComment':      return postComment_(args[0], args[1], args[2]);
-    case 'markRead':         return markRead_(args[0], args[1]);
     case 'verifyPresident':  return verifyPresident_(args[0]);
+    case 'addTag':           return addTag_(args[0]);
     case 'renameTag':        return renameTag_(args[0], args[1]);
     case 'deleteTag':        return deleteTag_(args[0]);
+    case 'reorderTags':      return reorderTags_(args[0]);
     case 'addIdea':          return addIdea_(args[0]);
     case 'updateIdea':       return updateIdea_(args[0], args[1]);
     case 'updateIdeaStatus': return updateIdeaStatus_(args[0], args[1]);
@@ -355,22 +359,31 @@ function getCategorySheet_() {
   return sh;
 }
 
+// タグシートを新規作成するときは、既にアイデアで使われているタグも取り込む。
+// タグをマスタ化する前に登録された案のタグが、マスタ一覧から漏れないようにするため。
+function getTagSheet_() {
+  const ss = getSpreadsheet_();
+  let sh = ss.getSheetByName(TAG_SHEET_NAME);
+  if (!sh) {
+    sh = ss.insertSheet(TAG_SHEET_NAME);
+    initSheet_(sh, [TAG_HEADER], [1], 500);
+    const seen = {};
+    const seed = collectUsedTags_().concat(TAG_SEED).filter(t => {
+      if (seen[t]) return false;
+      seen[t] = true;
+      return true;
+    });
+    if (seed.length) sh.getRange(2, 1, seed.length, 1).setValues(seed.map(t => [t]));
+  }
+  return sh;
+}
+
 function getCommentSheet_() {
   const ss = getSpreadsheet_();
   let sh = ss.getSheetByName(COMMENT_SHEET_NAME);
   if (!sh) {
     sh = ss.insertSheet(COMMENT_SHEET_NAME);
     initSheet_(sh, COMMENT_HEADERS, COMMENT_TEXT_COLS, 5000);
-  }
-  return sh;
-}
-
-function getReadSheet_() {
-  const ss = getSpreadsheet_();
-  let sh = ss.getSheetByName(READ_SHEET_NAME);
-  if (!sh) {
-    sh = ss.insertSheet(READ_SHEET_NAME);
-    initSheet_(sh, READ_HEADERS, READ_TEXT_COLS, 5000);
   }
   return sh;
 }
@@ -384,18 +397,18 @@ function getReadSheet_() {
 //
 // ※アイデアが数百件を超えて初回表示が重くなってきたら、ここを一覧用の軽い列だけに絞り、
 //   詳細は getIdeaDetail に寄せる（写真URLと原価だけあれば一覧は描ける）。
-// userName は未読判定に使う（その人の既読日時マップを返す）。
-// 名前を設定していない人には空マップを返し、社長コメントのある案がすべて未読として見える
-// （＝安全側に倒す。見逃しより「もう読んだのにまた出る」方がマシ）。
-function getInitialData_(userName) {
+// 既読はサーバーでは持たない。「その端末で読んだか」を端末側(localStorage)に記録する方式にした。
+// 社員ごとのアカウントを作らない運用なので、既読のためだけに名前を管理させるのは割に合わない。
+// 代償は「同じ人がPCとスマホで見ると片方でまた未読に見える」ことだが、
+// 見逃す方向には壊れないので実害は小さい。
+function getInitialData_() {
   const ideas = getIdeas_();
   return {
     ideas: ideas,
     stores: getStoreList_(),
     events: getEvents_(),
     categories: getCategoryList_(),
-    tags: collectTags_(ideas),
-    readMap: getReadMap_(userName),
+    tags: getTagList_(),
     deptOptions: DEPT_OPTIONS,
     statusOptions: STATUS_OPTIONS,
     unitOptions: UNIT_OPTIONS,
@@ -558,19 +571,16 @@ function joinList_(arr) {
     .join(',');
 }
 
-// 既に使われているタグを集めて、入力候補として返す（使用頻度の高い順）
-function collectTags_(ideas) {
+// アイデアで実際に使われているタグを、使用頻度の高い順に集める
+function collectUsedTags_() {
+  const sh = getIdeaSheet_();
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return [];
   const count = {};
-  (ideas || []).forEach(idea => {
-    (idea.tags || []).forEach(t => { count[t] = (count[t] || 0) + 1; });
+  sh.getRange(2, IDEA_COL.tags, lastRow - 1, 1).getValues().forEach(r => {
+    splitList_(r[0]).forEach(t => { count[t] = (count[t] || 0) + 1; });
   });
-  const used = Object.keys(count).sort((a, b) => count[b] - count[a]);
-  const seen = {};
-  return used.concat(TAG_SUGGESTIONS).filter(t => {
-    if (seen[t]) return false;
-    seen[t] = true;
-    return true;
-  });
+  return Object.keys(count).sort((a, b) => count[b] - count[a]);
 }
 
 function numOrZero_(v) {
@@ -730,6 +740,7 @@ function addIdea_(data) {
     applyIdeaTextFormat_(sh, startRow);
     sh.getRange(startRow, 1, 1, row.length).setValues([row]);
     replaceMaterialBlock_(id, materials);
+    syncTagsToMaster_(data.tags);
 
     return { idea: rowToIdea_(row, startRow), materials: getMaterialsFor_(id) };
   } finally {
@@ -786,6 +797,7 @@ function updateIdea_(id, data) {
     applyIdeaTextFormat_(sh, rowNum);
     sh.getRange(rowNum, 1, 1, row.length).setValues([row]);
     replaceMaterialBlock_(id, materials);
+    syncTagsToMaster_(data.tags);
 
     return { idea: rowToIdea_(row, rowNum), materials: getMaterialsFor_(id) };
   } finally {
@@ -863,7 +875,7 @@ function validateIdeaInput_(data) {
 }
 
 // ============================================================
-// コメント（社長からのコメント・方針／現場からのコメント）
+// コメント（社長からのコメント・方針／社長へのコメント）
 // ============================================================
 function getCommentsFor_(ideaId) {
   const sh = getCommentSheet_();
@@ -872,7 +884,7 @@ function getCommentsFor_(ideaId) {
   return sh.getRange(2, 1, lastRow - 1, COMMENT_HEADERS.length).getValues()
     .filter(r => String(r[0]) === String(ideaId))
     .map(r => ({
-      kind: r[1] || '現場',
+      kind: r[1] || KIND_TO_PRES,
       author: r[2] || '',
       text: r[3] || '',
       at: r[4] || ''
@@ -881,18 +893,19 @@ function getCommentsFor_(ideaId) {
     // 同じ「分」に投稿された複数コメントの前後関係が崩れるため、行順のまま返す
 }
 
-// payload = { kind: '社長'|'現場', text, name }
-// 種別が「社長」のときは presidentPass をサーバー側で毎回検証する。
-// 社長投稿はアイデア行の「社長コメント日時」も更新し、これが全員の未読バッジの引き金になる。
+// payload = { kind: '社長から'|'社長へ', text, name }
+// name は任意。社長からの投稿で未入力なら「社長」とだけ記録する。
+// 種別が「社長から」のときは presidentPass をサーバー側で毎回検証する。
+// 社長からの投稿はアイデア行の「社長コメント日時」も更新し、これが未読バッジの引き金になる。
 function postComment_(ideaId, payload, presidentPass) {
   payload = payload || {};
   const kind = payload.kind;
   const text = String(payload.text || '').trim();
-  const name = String(payload.name || '').trim();
   if (COMMENT_KINDS.indexOf(kind) < 0) throw new Error('不正なコメント種別です: ' + kind);
   if (!text) throw new Error('コメントを入力してください');
-  if (!name) throw new Error('名前を設定してください（画面右上の「名前を設定」から）');
-  if (kind === '社長') checkPresident_(presidentPass);
+  const fromPres = kind === KIND_FROM_PRES;
+  if (fromPres) checkPresident_(presidentPass);
+  const name = String(payload.name || '').trim() || (fromPres ? '社長' : '');
 
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
@@ -908,11 +921,9 @@ function postComment_(ideaId, payload, presidentPass) {
     sh.getRange(commentRow, 1, 1, COMMENT_HEADERS.length)
       .setValues([[ideaId, kind, name, text, now]]);
 
-    if (kind === '社長') {
+    if (fromPres) {
       ideaSh.getRange(rowNum, IDEA_COL.presAt, 1, 1).setNumberFormat('@');
       ideaSh.getRange(rowNum, IDEA_COL.presAt, 1, 1).setValues([[now]]);
-      // 投稿した本人が自分の投稿を「未読」として見せられても意味がないので、即座に既読にする
-      upsertRead_(name, ideaId, now);
     }
 
     const row = ideaSh.getRange(rowNum, 1, 1, IDEA_HEADERS.length).getValues()[0];
@@ -926,79 +937,121 @@ function postComment_(ideaId, payload, presidentPass) {
 }
 
 // ============================================================
-// 未読・既読
+// タグマスタ
 // ============================================================
-// その人の { アイデアID: 最終既読日時 } を返す。
-// 未読判定はクライアント側で「社長コメント日時 > 自分の既読日時」で行う。
-function getReadMap_(userName) {
-  const name = String(userName || '').trim();
-  const map = {};
-  if (!name) return map;
-  const sh = getReadSheet_();
+// マスタに登録された全タグを、シートの行順（＝画面で並び替えた順）で返す。
+// マスタに無いのにアイデアで使われているタグ（手作業でシートを編集した等）は
+// 末尾に足して返す。そうしないと画面から編集する手段が無くなってしまうため。
+function getTagList_() {
+  const sh = getTagSheet_();
   const lastRow = sh.getLastRow();
-  if (lastRow < 2) return map;
-  sh.getRange(2, 1, lastRow - 1, READ_HEADERS.length).getValues().forEach(r => {
-    if (String(r[0]).trim() === name) map[String(r[1])] = String(r[2] || '');
+  const list = lastRow < 2 ? [] : sh.getRange(2, 1, lastRow - 1, 1).getValues()
+    .map(r => String(r[0]).trim())
+    .filter(v => v !== '');
+  const seen = {};
+  list.forEach(t => { seen[t] = true; });
+  collectUsedTags_().forEach(t => {
+    if (!seen[t]) { seen[t] = true; list.push(t); }
   });
-  return map;
+  return list;
 }
 
-function markRead_(ideaId, userName) {
-  const name = String(userName || '').trim();
-  if (!name) return { ok: false };   // 名前未設定の人は既読を記録しようがない（エラーにはしない）
+// アイデア登録・更新時に、その場で作られた新しいタグをマスタへ取り込む。
+// 既にあるものは黙って無視するので、毎回呼んで問題ない。
+function syncTagsToMaster_(tags) {
+  splitList_(joinList_(tags)).forEach(t => {
+    try { addTagToMaster_(t, false); } catch (e) { /* マスタ追加の失敗で保存を止めない */ }
+  });
+}
+
+function addTag_(name) {
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
-    upsertRead_(name, ideaId, nowStr_());
-    return { ok: true };
+    addTagToMaster_(validateMasterName_(name, 'タグ名'), true);
+    return getTagList_();
   } finally {
     lock.releaseLock();
   }
 }
 
-// 「名前 × アイデア」の行があれば日時を更新、無ければ追記する
-function upsertRead_(name, ideaId, at) {
-  const sh = getReadSheet_();
+// マスタへ1件足す。throwIfDup=false なら既にあっても静かに無視する
+// （アイデア登録時にその場で作られたタグを取り込む用）。
+function addTagToMaster_(name, throwIfDup) {
+  const sh = getTagSheet_();
   const lastRow = sh.getLastRow();
-  if (lastRow >= 2) {
-    const values = sh.getRange(2, 1, lastRow - 1, 2).getValues();
-    const idx = values.findIndex(r =>
-      String(r[0]).trim() === String(name) && String(r[1]) === String(ideaId));
-    if (idx >= 0) {
-      sh.getRange(idx + 2, 3, 1, 1).setNumberFormat('@');
-      sh.getRange(idx + 2, 3, 1, 1).setValues([[at]]);
-      return;
-    }
+  const existing = lastRow < 2 ? [] : sh.getRange(2, 1, lastRow - 1, 1).getValues()
+    .map(r => String(r[0]).trim());
+  if (existing.indexOf(name) >= 0) {
+    if (throwIfDup) throw new Error('同じ名前のタグが既にあります');
+    return;
   }
   const rowNum = sh.getLastRow() + 1;
-  READ_TEXT_COLS.forEach(col => sh.getRange(rowNum, col, 1, 1).setNumberFormat('@'));
-  sh.getRange(rowNum, 1, 1, READ_HEADERS.length).setValues([[name, ideaId, at]]);
+  sh.getRange(rowNum, 1, 1, 1).setNumberFormat('@');
+  sh.getRange(rowNum, 1, 1, 1).setValues([[name]]);
 }
 
-// ============================================================
-// タグの一括編集
-// ============================================================
-// タグはマスタを持たない自由入力なので、「編集」＝全アイデアのタグ列を横断で書き換えること。
-// 改名は重複整理（例：「SNS映え」と「SNSばえ」の統一）にも使える。
+// 改名はマスタと、そのタグが付いた全アイデアの両方を書き換える。
+// 表記ゆれの統一（例：「SNSばえ」→「SNS映え」）にも使える。
 function renameTag_(oldName, newName) {
-  const trimmedNew = validateMasterName_(newName, 'タグ名');
+  const from = String(oldName).trim();
+  const to = validateMasterName_(newName, 'タグ名');
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
-    return { renamed: rewriteTagColumn_(String(oldName).trim(), trimmedNew) };
+    renameInMasterColumn_(getTagSheet_(), from, to);
+    return { renamed: rewriteTagColumn_(from, to), tags: getTagList_() };
   } finally {
     lock.releaseLock();
   }
 }
 
+// タグはカテゴリと違い「使用中でも削除できる」。自由に付け外しするラベルなので、
+// 消したいときに全アイデアから外せる方が実用的なため。
 function deleteTag_(name) {
+  const target = String(name).trim();
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
-    return { removed: rewriteTagColumn_(String(name).trim(), null) };
+    deleteFromMasterColumn_(getTagSheet_(), target);
+    return { removed: rewriteTagColumn_(target, null), tags: getTagList_() };
   } finally {
     lock.releaseLock();
   }
+}
+
+function reorderTags_(names) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    reorderMasterRows_(getTagSheet_(), [TAG_HEADER], [1], names, 0);
+    return getTagList_();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// 1列だけのマスタシート（カテゴリ・タグ）で使う共通処理
+function renameInMasterColumn_(sh, oldName, newName) {
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return;
+  const range = sh.getRange(2, 1, lastRow - 1, 1);
+  const values = range.getValues();
+  const idx = values.findIndex(r => String(r[0]).trim() === oldName);
+  if (idx < 0) return;
+  // 改名先が既にある場合は、行を統合するため旧行を消すだけにする
+  const dup = values.findIndex(r => String(r[0]).trim() === newName);
+  if (dup >= 0) { sh.deleteRow(idx + 2); return; }
+  sh.getRange(idx + 2, 1, 1, 1).setNumberFormat('@');
+  sh.getRange(idx + 2, 1, 1, 1).setValues([[newName]]);
+}
+
+function deleteFromMasterColumn_(sh, name) {
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return;
+  const values = sh.getRange(2, 1, lastRow - 1, 1).getValues();
+  const idx = values.findIndex(r => String(r[0]).trim() === name);
+  if (idx >= 0) sh.deleteRow(idx + 2);
 }
 
 // タグ列を全行走査し、target を newName に置換（newName=null なら削除）した行数を返す。

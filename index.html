@@ -108,7 +108,7 @@ img{max-width:100%;display:block}
 .card-unread .un-at{color:var(--ink-faint);font-weight:600}
 
 /* ===== 社長からのコメント・方針（詳細画面） =====
-   現場コメントと一目で区別できるよう琥珀色。最新を大きく、履歴は折りたたみ */
+   社長へのコメントと一目で区別できるよう琥珀色。最新を大きく、履歴は折りたたみ */
 .pres-box{background:var(--warn-bg);border:1px solid #fcd34d;border-radius:10px;padding:.7rem .8rem}
 .pres-box .pb-head{display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap;
   font-size:.7rem;color:#92400e;font-weight:700;margin-bottom:.3rem}
@@ -121,7 +121,15 @@ img{max-width:100%;display:block}
 .cform{display:flex;flex-direction:column;gap:.45rem;margin-top:.6rem}
 .cform textarea{width:100%;padding:.55rem .65rem;border:1px solid var(--line);border-radius:8px;background:#fff;
   font-size:.88rem;min-height:4rem;resize:vertical;line-height:1.7}
-.cform .btn{align-self:flex-end}
+.cform .crow{display:flex;gap:.45rem;align-items:center}
+.cform .crow input{flex:1;min-width:0;padding:.5rem .6rem;border:1px solid var(--line);border-radius:8px;
+  background:#fff;font-size:.85rem}
+/* 既読は「開いた＝読んだ」と自動判定せず、本人がチェックして確定する。
+   開いただけで既読になると、流し見した案が未読リストから消えてしまうため */
+.readchk{display:flex;align-items:center;gap:.45rem;margin-top:.6rem;padding:.55rem .7rem;
+  background:#fff;border:1px solid var(--line);border-radius:9px;font-size:.82rem;font-weight:700;cursor:pointer}
+.readchk input{width:1.15rem;height:1.15rem;accent-color:var(--brand);flex:0 0 auto;cursor:pointer}
+.readchk.done{background:var(--brand-tint);border-color:var(--brand);color:var(--brand-dark)}
 .hdr-pres{font-size:.68rem;background:#fbbf24;color:#78350f;border-radius:999px;padding:.14rem .55rem;font-weight:700;white-space:nowrap}
 
 .pill{display:inline-block;padding:.16rem .5rem;border-radius:999px;font-size:.68rem;font-weight:700;white-space:nowrap}
@@ -289,10 +297,7 @@ img{max-width:100%;display:block}
       <div class="hdr-title">新商品アイデア共有</div>
       <div class="hdr-sub">アイデア・レシピを店舗間で共有</div>
     </div>
-    <div style="display:flex;align-items:center;gap:.45rem">
-      <span id="presBadge" class="hdr-pres hidden">社長モード</span>
-      <button id="meBtn" class="hdr-me"><span id="meName">名前を設定</span></button>
-    </div>
+    <span id="presBadge" class="hdr-pres hidden">社長モード</span>
   </div>
 </header>
 
@@ -499,11 +504,16 @@ img{max-width:100%;display:block}
     </div>
   </div>
   <div class="panel">
-    <h3>タグの編集</h3>
+    <h3>タグマスタ</h3>
     <p style="font-size:.75rem;color:var(--ink-faint);margin-bottom:.7rem">
-      使われているタグの一覧です。改名・削除はそのタグが付いた全アイデアに反映されます。
-      表記ゆれの統一（例：「SNSばえ」→「SNS映え」）にも使えます。</p>
+      登録されているタグの一覧です。改名・削除はそのタグが付いた全アイデアに反映されます。
+      表記ゆれの統一（例：「SNSばえ」→「SNS映え」）にも使えます。
+      アイデア登録画面で作ったタグも、自動でここに追加されます。</p>
     <div id="tagList" class="mlist"></div>
+    <div class="addrow">
+      <input id="tg-name" placeholder="タグ名（例：SNS映え）">
+      <button id="tg-add" class="btn btn-primary btn-sm">追加</button>
+    </div>
   </div>
   <div class="panel">
     <h3>社長モード</h3>
@@ -584,19 +594,28 @@ window.onerror = function(msg, url, line){
    そのためURLは必ず引用符付きの文字列定数にしておくこと。 */
 var DRIVE_THUMB_BASE = 'https://drive.google.com/thumbnail?id=';
 
+// コメントの種別。Code.gs の KIND_FROM_PRES / KIND_TO_PRES と同じ文字列にすること
+var KIND_FROM_PRES = '社長から';
+var KIND_TO_PRES   = '社長へ';
+
 // ============================================================
 // 状態
 // ============================================================
 var LS_PASSCODE = 'idea_passcode';
-var LS_ME       = 'idea_me';       // 自分の名前。既読の管理と「更新者」の記録に使う
+var LS_ME       = 'idea_me';       // 任意の表示名。コメントの投稿者ラベルに使うだけ
 var LS_FILTER   = 'idea_filter';   // 絞り込みの選択状態
 var LS_PRES     = 'idea_pres';     // 社長モードの合い言葉（本人確認はサーバー側が毎回行う）
+var LS_READ     = 'idea_read';     // 既読の記録。{アイデアID: 読んだ社長コメントの日時}
 
 var PASSCODE = '';
 var ME = '';
 var PRES = '';                     // 社長モードの合い言葉。空なら通常モード
+// 既読はこの端末だけで持つ。社員ごとのアカウントを作らない運用なので、
+// 既読のためだけに名前を管理させない判断。
+// 代償は「同じ人がPCとスマホで見ると片方でまた未読に見える」ことだが、見逃す方向には壊れない。
+var READ = {};
 var D = {  // サーバーから取得したマスタ類
-  ideas:[], stores:[], events:[], categories:[], tags:[], readMap:{},
+  ideas:[], stores:[], events:[], categories:[], tags:[],
   deptOptions:['店舗部門','ぎゅう丸ラボ'],
   statusOptions:['提案中','検討中','採用','見送り'], unitOptions:[], yieldUnitOptions:[],
   allergenOptions:[], storageOptions:[], monthOptions:[], today:'', thisMonth:''
@@ -671,16 +690,29 @@ function rateClass(r){
 }
 
 // ============================================================
-// 未読判定
+// 未読判定（既読はこの端末のlocalStorageだけで管理する）
 // ============================================================
-// 「社長コメントの最終日時」が「自分の既読日時」より新しければ未読。
+// 「社長コメントの最終日時」が「この端末で読んだ日時」より新しければ未読。
 // 日時は 'yyyy/MM/dd HH:mm' の固定形式なので文字列比較で正しく大小が決まる。
-// 名前未設定の人は既読マップが空＝社長コメントのある案がすべて未読に見える
-// （見逃すより「もう読んだのにまた出る」方が安全）。
 function isUnread(i){
   if(!i.presAt) return false;
-  var seen = (D.readMap||{})[i.id] || '';
-  return !seen || seen < i.presAt;
+  var seen = READ[i.id] || '';
+  return seen < i.presAt;
+}
+function markReadLocal(id, at){
+  if(!at) return;
+  READ[id] = at;
+  lsSet(LS_READ, JSON.stringify(READ));
+}
+function clearReadLocal(id){
+  delete READ[id];
+  lsSet(LS_READ, JSON.stringify(READ));
+}
+function loadRead(){
+  try{
+    var s = lsGet(LS_READ);
+    READ = s ? (JSON.parse(s) || {}) : {};
+  }catch(e){ READ = {}; }
 }
 // カード下部に出す「最終更新日時」。編集と社長コメントの新しい方
 function latestAt(i){
@@ -747,9 +779,8 @@ function applyInitialData(data){
   render();
 }
 
-// 名前（ME）を渡すと、その人の既読マップが返ってきて未読バッジが正しく出る
 function reload(){
-  return gsRun('getInitialData', ME).then(applyInitialData);
+  return gsRun('getInitialData').then(applyInitialData);
 }
 
 // ============================================================
@@ -1056,14 +1087,6 @@ function openDetail(id){
     var idx = D.ideas.findIndex(function(i){ return String(i.id) === String(id); });
     if(idx >= 0) D.ideas[idx] = res.idea;
     q('d-body').innerHTML = detailHtml(res.idea, DETAIL_MATS, res.comments || []);
-
-    // 詳細を開いた＝社長コメントを読んだ、として既読を記録する。
-    // 画面は待たせず先に既読扱いにし、サーバーへの記録は裏で送る
-    if(isUnread(res.idea)){
-      D.readMap[res.idea.id] = res.idea.presAt;
-      render();   // 背後の一覧から未読バッジを消す
-      gsRun('markRead', res.idea.id, ME).catch(function(){ /* 記録失敗は次回開いたときに再送される */ });
-    }
   }).catch(function(e){
     q('d-body').innerHTML = '<div class="empty">読み込みに失敗しました<br>' + esc(errMsg(e)) + '</div>';
   });
@@ -1096,7 +1119,7 @@ function detailHtml(i, materials, comments){
 
   // ---- 社長からのコメント・方針 ----
   // 最新を強調表示し、過去の履歴は折りたたみ。「以前はどういう方針だったか」を後から追える
-  var pres = comments.filter(function(c){ return c.kind === '社長'; });
+  var pres = comments.filter(function(c){ return c.kind === KIND_FROM_PRES; });
   h += '<div class="sec"><h4>社長からのコメント・方針</h4>';
   if(pres.length){
     var latest = pres[pres.length - 1];
@@ -1114,26 +1137,35 @@ function detailHtml(i, materials, comments){
                '<div class="pb-text">' + esc(c.text) + '</div></div>';
            }).join('') + '</div>';
     }
+    // 既読は本人がチェックして確定する（この端末に記録される）
+    var done = !isUnread(i);
+    h += '<label class="readchk' + (done ? ' done' : '') + '" id="readWrap">' +
+         '<input type="checkbox" id="readChk"' + (done ? ' checked' : '') + '>' +
+         '<span id="readLbl">' + (done ? '確認済み' : '内容を確認した（既読にする）') + '</span></label>';
   }else{
     h += '<div style="font-size:.8rem;color:var(--ink-faint)">まだコメントはありません</div>';
   }
   if(PRES){
-    h += '<div class="cform"><textarea id="presInput" placeholder="この商品のイメージ・方向性・決定事項・方針変更など"></textarea>' +
-         '<button type="button" id="presPost" class="btn btn-primary btn-sm">社長コメントを投稿する</button></div>';
+    h += '<div class="cform">' +
+         '<textarea id="presInput" placeholder="この商品のイメージ・方向性・決定事項・方針変更など"></textarea>' +
+         '<div class="crow"><input id="presName" placeholder="お名前（任意）" value="' + esc(ME) + '">' +
+         '<button type="button" id="presPost" class="btn btn-primary btn-sm">投稿する</button></div></div>';
   }
   h += '</div>';
 
-  // ---- 現場からのコメント ----
+  // ---- 社長へのコメント ----
   // 社長からの一方通行にしないための双方向チャンネル。誰でも投稿できる
-  var field = comments.filter(function(c){ return c.kind !== '社長'; });
-  h += '<div class="sec"><h4>現場からのコメント</h4>';
-  h += field.map(function(c){
-    return '<div class="cmt"><div class="c-head"><span>' + esc(c.author) + '</span>' +
+  var toPres = comments.filter(function(c){ return c.kind !== KIND_FROM_PRES; });
+  h += '<div class="sec"><h4>社長へのコメント</h4>';
+  h += toPres.map(function(c){
+    return '<div class="cmt"><div class="c-head"><span>' + esc(c.author || '（名前なし）') + '</span>' +
       '<span>' + esc(c.at) + '</span></div>' +
       '<div class="c-text">' + esc(c.text) + '</div></div>';
   }).join('') || '<div style="font-size:.8rem;color:var(--ink-faint)">まだコメントはありません</div>';
-  h += '<div class="cform"><textarea id="fieldInput" placeholder="社長コメントへの質問・意見、現場からの気づきなど"></textarea>' +
-       '<button type="button" id="fieldPost" class="btn btn-line btn-sm">コメントする</button></div></div>';
+  h += '<div class="cform">' +
+       '<textarea id="toPresInput" placeholder="社長コメントへの質問・意見、気づいたことなど"></textarea>' +
+       '<div class="crow"><input id="toPresName" placeholder="お名前（任意）" value="' + esc(ME) + '">' +
+       '<button type="button" id="toPresPost" class="btn btn-line btn-sm">投稿する</button></div></div></div>';
 
   // 材料・原価
   h += '<div class="sec"><h4>材料・原価</h4>';
@@ -1191,7 +1223,7 @@ function detailHtml(i, materials, comments){
   return h;
 }
 
-// 詳細の中身は毎回HTMLを作り直すので、コメント投稿などのボタンはここで一括して拾う
+// 詳細の中身は毎回HTMLを作り直すので、ボタン類はここで一括して拾う
 on(q('d-body'), 'click', function(e){
   var t = e.target;
   if(t.id === 'presHistBtn'){
@@ -1200,35 +1232,42 @@ on(q('d-body'), 'click', function(e){
     t.textContent = hidden ? '過去のコメントを見る（' + hist.children.length + '件）'
                            : '過去のコメントを閉じる';
   }else if(t.id === 'presPost'){
-    submitComment('社長', 'presInput', t);
-  }else if(t.id === 'fieldPost'){
-    submitComment('現場', 'fieldInput', t);
+    submitComment(KIND_FROM_PRES, 'presInput', 'presName', t);
+  }else if(t.id === 'toPresPost'){
+    submitComment(KIND_TO_PRES, 'toPresInput', 'toPresName', t);
   }
 });
 
-function submitComment(kind, inputId, btn){
+// 既読チェックボックス。チェックを外せば未読に戻せる（あとで読み返したいとき用）
+on(q('d-body'), 'change', function(e){
+  if(e.target.id !== 'readChk' || !DETAIL) return;
+  var on = e.target.checked;
+  if(on) markReadLocal(DETAIL.id, DETAIL.presAt);
+  else   clearReadLocal(DETAIL.id);
+  q('readWrap').classList.toggle('done', on);
+  q('readLbl').textContent = on ? '確認済み' : '内容を確認した（既読にする）';
+  render();   // 背後の一覧の未読バッジを更新
+});
+
+function submitComment(kind, textId, nameId, btn){
   if(!DETAIL) return;
-  var text = String(q(inputId).value || '').trim();
+  var text = String(q(textId).value || '').trim();
   if(!text){ toast('コメントを入力してください', true); return; }
-  // 投稿者名は必須。未設定ならその場で決めてもらう
-  if(!ME){
-    var nm = prompt('あなたの名前を入力してください（コメントの投稿者として表示されます）', '');
-    if(nm == null || !String(nm).trim()) return;
-    setMe(nm);
-  }
+  var name = String(q(nameId).value || '').trim();
+  if(name) setMe(name);   // 次回以降の入力欄に引き継ぐ
+
   var id = DETAIL.id;
+  var fromPres = kind === KIND_FROM_PRES;
   btn.disabled = true;
   var orig = btn.textContent;
   btn.textContent = '投稿中…';
-  gsRun('postComment', id, { kind: kind, text: text, name: ME }, kind === '社長' ? PRES : '')
+  gsRun('postComment', id, { kind: kind, text: text, name: name }, fromPres ? PRES : '')
     .then(function(res){
       DETAIL = res.idea;
       var idx = D.ideas.findIndex(function(i){ return String(i.id) === String(id); });
       if(idx >= 0) D.ideas[idx] = res.idea;
-      if(kind === '社長'){
-        // 自分の投稿を自分で未読にしない（サーバー側でも既読化している）
-        D.readMap[id] = res.idea.presAt;
-      }
+      // 社長が自分で書いた方針を自分あてに未読表示しても意味がないので既読にしておく
+      if(fromPres) markReadLocal(id, res.idea.presAt);
       q('d-body').innerHTML = detailHtml(res.idea, DETAIL_MATS, res.comments || []);
       render();
       toast('投稿しました');
@@ -1789,33 +1828,52 @@ on(q('ct-add'), 'click', function(){
 // ============================================================
 // タグの編集（改名・削除は全アイデアへ一括反映）
 // ============================================================
+// 登録されている全タグを表示する（使われていない候補タグも含む）
 function renderTagList(){
   var counts = {};
   D.ideas.forEach(function(i){ (i.tags||[]).forEach(function(t){ counts[t] = (counts[t]||0) + 1; }); });
-  var keys = Object.keys(counts).sort(function(a,b){ return counts[b] - counts[a]; });
-  q('tagList').innerHTML = keys.map(function(t){
+  var list = D.tags || [];
+  q('tagList').innerHTML = list.map(function(t, idx){
+    var n = counts[t] || 0;
     return '<div class="mrow" data-name="' + esc(t) + '">' +
-      '<div class="nm">#' + esc(t) + '<span class="sub"> ・ ' + counts[t] + '件</span></div>' +
+      ordHtml(idx, list.length) +
+      '<div class="nm">#' + esc(t) +
+        '<span class="sub"> ・ ' + (n ? n + '件' : '未使用') + '</span></div>' +
       '<button class="btn btn-line btn-sm" data-act="rename">改名</button>' +
       '<button class="btn btn-danger btn-sm" data-act="del">削除</button></div>';
-  }).join('') || '<div class="hint">タグはまだ使われていません</div>';
+  }).join('') || '<div class="hint">タグが登録されていません</div>';
 }
 on(q('tagList'), 'click', function(e){
   var b = e.target.closest('button');
   if(!b) return;
   var name = b.closest('.mrow').dataset.name;
-  if(b.dataset.act === 'rename'){
+  if(b.dataset.act === 'up' || b.dataset.act === 'down'){
+    reorderMaster('reorderTags', D.tags, name, b.dataset.act === 'up' ? -1 : 1);
+  }else if(b.dataset.act === 'rename'){
     var nn = prompt('新しいタグ名（付いている全アイデアに反映されます）', name);
     if(nn == null) return;
     gsRun('renameTag', name, nn)
-      .then(function(r){ toast('改名しました（' + r.renamed + '件に反映）'); return reload(); })
+      .then(function(r){
+        toast(r.renamed ? '改名しました（' + r.renamed + '件のアイデアに反映）' : '改名しました');
+        return reload();
+      })
       .catch(function(err){ toast(errMsg(err), true); });
   }else{
-    if(!confirm('タグ「' + name + '」を、付いている全アイデアから削除しますか？')) return;
+    if(!confirm('タグ「' + name + '」を削除しますか？\n付いているアイデアからも外れます。')) return;
     gsRun('deleteTag', name)
-      .then(function(r){ toast('削除しました（' + r.removed + '件から除去）'); return reload(); })
+      .then(function(r){
+        toast(r.removed ? '削除しました（' + r.removed + '件から除去）' : '削除しました');
+        return reload();
+      })
       .catch(function(err){ toast(errMsg(err), true); });
   }
+});
+on(q('tg-add'), 'click', function(){
+  var name = q('tg-name').value.trim();
+  if(!name){ toast('タグ名を入力してください', true); return; }
+  gsRun('addTag', name)
+    .then(function(){ q('tg-name').value = ''; toast('追加しました'); return reload(); })
+    .catch(function(e){ toast(errMsg(e), true); });
 });
 
 // ============================================================
@@ -1853,21 +1911,14 @@ on(q('pres-off'), 'click', function(){
 });
 
 // ============================================================
-// 自分の名前（未読の管理と、誰が更新・投稿したかの記録に使う）
+// 表示名（任意）
 // ============================================================
+// 個人アカウントは作らない方針なので、名前は「コメント欄で毎回入力する任意のラベル」。
+// 一度入力すると端末に覚えて、次回の入力欄に初期値として入る。
 function setMe(name){
   ME = String(name||'').trim();
   lsSet(LS_ME, ME);
-  q('meName').textContent = ME || '名前を設定';
 }
-on(q('meBtn'), 'click', function(){
-  var v = prompt('あなたの名前を入力してください（未読の管理と更新記録に使います）', ME);
-  if(v == null) return;
-  var changed = String(v).trim() !== ME;
-  setMe(v);
-  // 名前が変わったら既読マップもその人のものに切り替える
-  if(changed && q('gate').classList.contains('hidden')) reload();
-});
 
 // ============================================================
 // 合い言葉ゲート
@@ -1878,19 +1929,10 @@ function unlock(passcode){
   if(!passcode){ msg.textContent = '合い言葉を入力してください'; return; }
   btn.disabled = true; btn.textContent = '確認中…';
   PASSCODE = passcode;
-  gsRun('getInitialData', ME).then(function(data){
+  gsRun('getInitialData').then(function(data){
     lsSet(LS_PASSCODE, passcode);
     q('gate').classList.add('hidden');
     applyInitialData(data);
-    // 名前が未設定だと未読の管理ができないので、最初に一度だけ入力を促す。
-    // 入力後は既読マップを取り直して未読バッジを正しくする
-    if(!ME){
-      var nm = prompt('あなたの名前を入力してください\n（社長コメントの未読管理と、更新記録に使います）', '');
-      if(nm != null && String(nm).trim()){
-        setMe(nm);
-        reload();
-      }
-    }
   }).catch(function(e){
     PASSCODE = '';
     // 「合い言葉が違います」と一律に出すと、サーバー側の設定漏れに気づけないため分けて出す
@@ -1913,6 +1955,7 @@ on(q('gateInput'), 'keydown', function(e){
 (function init(){
   setMe(lsGet(LS_ME) || '');
   PRES = lsGet(LS_PRES) || '';
+  loadRead();
   renderPresPanel();
   var saved = lsGet(LS_PASSCODE);
   if(saved){
