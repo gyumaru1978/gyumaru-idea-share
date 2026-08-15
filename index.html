@@ -179,6 +179,9 @@ img{max-width:100%;display:block}
 .mtable input{width:100%;padding:.4rem .45rem;border:1px solid var(--line);border-radius:6px;font-size:.82rem}
 .mtable .num input{text-align:right}
 .mtable .amt{text-align:right;font-weight:700;white-space:nowrap;padding-right:.3rem;color:var(--ink-muted);font-size:.8rem}
+.mtable td:first-child{position:relative}
+.mm-tag{position:absolute;right:.35rem;top:50%;transform:translateY(-50%);font-size:.55rem;font-weight:700;
+  background:var(--brand-light);color:var(--brand-dark);border-radius:4px;padding:.05rem .25rem;pointer-events:none}
 .mtable .del{width:1.9rem}
 .mtable .del button{width:1.7rem;height:1.7rem;border-radius:6px;color:var(--ink-faint);font-size:1rem;line-height:1}
 .mtable .del button:hover{background:var(--danger-bg);color:var(--danger)}
@@ -192,6 +195,12 @@ img{max-width:100%;display:block}
 /* 写真 */
 .photos{display:grid;grid-template-columns:1fr 1fr;gap:.7rem}
 .photos-1{grid-template-columns:1fr;max-width:20rem}
+/* 完成イメージとポスターを横並びに（スマホは縦積み） */
+.f-lbl{display:block;font-size:.72rem;font-weight:700;color:var(--ink-muted);margin-bottom:.3rem}
+.photo-poster{display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-start}
+.pp-photo{flex:0 0 auto;width:11rem;max-width:100%}
+.pp-photo .ph{aspect-ratio:4/3}
+.pp-poster{flex:1 1 16rem;min-width:0}
 .ph{position:relative;aspect-ratio:4/3;border:2px dashed var(--line);border-radius:10px;overflow:hidden;background:var(--bg);
   display:flex;align-items:center;justify-content:center;color:var(--ink-faint);font-size:.75rem;text-align:center;padding:.5rem}
 .ph img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
@@ -258,7 +267,7 @@ img{max-width:100%;display:block}
 .pcard-actions .btn{flex:1;text-align:center}
 .prow{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center}
 .prow .pstore{flex:0 0 auto;min-width:8rem;padding:.5rem .6rem;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:.85rem}
-.prow input{flex:1;min-width:8rem;padding:.5rem .65rem;border:1px solid var(--line);border-radius:8px;font-size:.85rem}
+.prow > input{flex:1;min-width:8rem;padding:.5rem .65rem;border:1px solid var(--line);border-radius:8px;font-size:.85rem}
 
 /* ===== マスタ一覧 ===== */
 .mlist{display:grid;gap:.4rem}
@@ -424,6 +433,7 @@ img{max-width:100%;display:block}
       <div class="cb">1つあたり原価<b id="c-per">¥0</b></div>
       <div class="cb big">原価率<b id="c-rate">—</b></div>
     </div>
+    <div class="hint" style="margin-top:.5rem">材料マスタから選んだ材料は「マスタ」と表示され、単位・単価が自動で入ります。マスタに無いものは手入力できます。</div>
   </div>
 
   <div class="panel">
@@ -434,9 +444,12 @@ img{max-width:100%;display:block}
 
   <div class="panel">
     <h3>アレルギー・栄養・保存</h3>
-    <div class="f"><label>アレルギー（特定原材料8品目）</label><div class="picks" id="i-allergen8"></div></div>
-    <div class="f" style="margin-top:.6rem"><label>アレルギー（準ずるもの20品目）</label><div class="picks" id="i-allergen20"></div></div>
-    <div class="fgrid c3" style="margin-top:.8rem">
+    <div id="autoAllergen" style="font-size:.75rem;color:var(--ink-muted);margin-bottom:.5rem"></div>
+    <div class="f"><label>アレルギーを手動で追加（特定原材料8品目）</label><div class="picks" id="i-allergen8"></div></div>
+    <div class="f" style="margin-top:.6rem"><label>アレルギーを手動で追加（準ずるもの20品目）</label><div class="picks" id="i-allergen20"></div></div>
+    <div id="autoNutri" style="font-size:.75rem;color:var(--ink-muted);margin:.9rem 0 .3rem"></div>
+    <div class="f"><label>栄養を手動で追加（材料に無い分・1つあたり）</label></div>
+    <div class="fgrid c3" style="margin-top:.3rem">
       <div class="f"><label>エネルギー(kcal)</label><input id="i-kcal" type="number" inputmode="decimal" step="any" min="0"></div>
       <div class="f"><label>たんぱく質(g)</label><input id="i-protein" type="number" inputmode="decimal" step="any" min="0"></div>
       <div class="f"><label>脂質(g)</label><input id="i-fat" type="number" inputmode="decimal" step="any" min="0"></div>
@@ -451,20 +464,20 @@ img{max-width:100%;display:block}
   </div>
 
   <div class="panel">
-    <h3>写真・メモ</h3>
-    <div class="photos photos-1">
-      <label class="ph" id="ph1"><span>完成イメージ<br>タップして選択</span>
-        <input type="file" accept="image/*" class="sr" id="file1"></label>
+    <h3>写真・ポスター</h3>
+    <div class="photo-poster">
+      <div class="pp-photo">
+        <label class="f-lbl">完成イメージ</label>
+        <label class="ph" id="ph1"><span>完成イメージ<br>タップして選択</span>
+          <input type="file" accept="image/*" class="sr" id="file1"></label>
+      </div>
+      <div class="pp-poster">
+        <label class="f-lbl">ポスター（使った店舗ごと・ダウンロード可）</label>
+        <div id="posterFormArea"></div>
+      </div>
     </div>
-    <div class="f" style="margin-top:.8rem"><label>検討メモ</label>
+    <div class="f" style="margin-top:.9rem"><label>検討メモ</label>
       <textarea id="i-memo" rows="3" placeholder="試作の感想、会議での指摘、原価を下げる案など"></textarea></div>
-  </div>
-
-  <div class="panel">
-    <h3>ポスター（店舗ごと）</h3>
-    <p style="font-size:.75rem;color:var(--ink-faint);margin-bottom:.7rem">
-      テーブルに置くポスターやメニュー表の画像を、使った店舗ごとに保管できます。ダウンロードもできます。</p>
-    <div id="posterFormArea"></div>
     <div class="formbar">
       <button id="formCancel" class="btn btn-ghost">キャンセル</button>
       <button id="formSave" class="btn btn-primary">保存する</button>
@@ -474,6 +487,14 @@ img{max-width:100%;display:block}
 
 <!-- ========== マスタ ========== -->
 <section id="view-master" class="hidden">
+  <div class="panel">
+    <h3>材料マスタ</h3>
+    <p style="font-size:.75rem;color:var(--ink-faint);margin-bottom:.7rem">
+      材料ごとに「基準量（例：1000g／1個）あたりの単価・栄養・アレルギー・仕入れ先」を登録します。
+      レシピではここから材料を選び、使う量を入れるだけで原価・栄養・アレルギーが自動計算されます。</p>
+    <div id="mmList" class="mlist"></div>
+    <button id="mm-add" class="btn btn-primary btn-sm" style="margin-top:.6rem">＋ 材料を追加</button>
+  </div>
   <div class="panel">
     <h3>店舗マスタ</h3>
     <p style="font-size:.75rem;color:var(--ink-faint);margin-bottom:.7rem">
@@ -551,6 +572,42 @@ img{max-width:100%;display:block}
   </div>
 </div>
 
+<!-- ========== 材料マスタ編集モーダル ========== -->
+<div id="mmM" class="mbg hidden">
+  <div class="mbox">
+    <div class="mhead"><h2 id="mm-title">材料を追加</h2><button class="x" data-close="mmM">✕</button></div>
+    <div class="mbody">
+      <div class="fgrid c2">
+        <div class="f"><label>材料名<span class="req">*</span></label><input id="mm-name" placeholder="例：鶏もも肉"></div>
+        <div class="f"><label>仕入れ先</label><input id="mm-supplier" placeholder="例：〇〇商店／業務スーパー"></div>
+      </div>
+      <div class="panel" style="box-shadow:none;border:1px solid var(--line);margin:.7rem 0">
+        <div class="fgrid c2">
+          <div class="f"><label>基準量<span class="req">*</span></label><input id="mm-baseQty" type="number" inputmode="decimal" step="any" min="0" placeholder="1000"></div>
+          <div class="f"><label>単位</label><input id="mm-unit" list="unitList" placeholder="g"></div>
+        </div>
+        <div class="hint" style="margin:.2rem 0 .6rem">↑この量あたりで、下の単価・栄養を入力します（例：1000g あたり）</div>
+        <div class="f"><label>単価（円）</label><input id="mm-price" type="number" inputmode="decimal" step="any" min="0" placeholder="900"></div>
+        <div class="fgrid c3" style="margin-top:.6rem">
+          <div class="f"><label>エネルギー(kcal)</label><input id="mm-kcal" type="number" inputmode="decimal" step="any" min="0"></div>
+          <div class="f"><label>たんぱく質(g)</label><input id="mm-protein" type="number" inputmode="decimal" step="any" min="0"></div>
+          <div class="f"><label>脂質(g)</label><input id="mm-fat" type="number" inputmode="decimal" step="any" min="0"></div>
+          <div class="f"><label>炭水化物(g)</label><input id="mm-carb" type="number" inputmode="decimal" step="any" min="0"></div>
+          <div class="f"><label>食塩相当量(g)</label><input id="mm-salt" type="number" inputmode="decimal" step="any" min="0"></div>
+        </div>
+      </div>
+      <div class="f"><label>含まれるアレルギー</label><div class="picks" id="mm-allergen8"></div>
+        <div class="picks" id="mm-allergen20" style="margin-top:.4rem"></div></div>
+      <div class="f" style="margin-top:.6rem"><label>メモ</label><input id="mm-memo" placeholder="例：約200g/個"></div>
+    </div>
+    <div class="mfoot">
+      <button id="mm-del" class="btn btn-danger hidden" style="flex:0 0 auto">削除</button>
+      <button class="btn btn-ghost" data-close="mmM">キャンセル</button>
+      <button id="mm-save" class="btn btn-primary">保存</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <!-- 材料の単位入力の候補。材料行より前にDOMへ置いておく必要がある -->
@@ -559,6 +616,8 @@ img{max-width:100%;display:block}
   <option value="個"></option><option value="枚"></option><option value="本"></option><option value="袋"></option>
   <option value="缶"></option><option value="大さじ"></option><option value="小さじ"></option><option value="適量"></option>
 </datalist>
+<!-- 材料マスタ名の候補（レシピ入力で使う）。renderMaterialDatalistで中身を差し込む -->
+<datalist id="materialList"></datalist>
 
 <script>
 // スクリプトが途中で例外を出すとボタンのイベント登録まで到達せず「押しても無反応」になる。
@@ -600,8 +659,11 @@ var PRES = '';                     // 社長モードの合い言葉。空なら
 // 既読のためだけに名前を管理させない判断。
 // 代償は「同じ人がPCとスマホで見ると片方でまた未読に見える」ことだが、見逃す方向には壊れない。
 var READ = {};
+var MMAP = {};            // 材料名 → 材料マスタ obj（原価・栄養・アレルギーの自動計算に使う）
+var MM_EDIT = null;       // 材料マスタ編集モーダルで編集中の材料名（新規は null）
+var MM_ALLERGENS = [];    // 材料マスタ編集モーダルで選択中のアレルギー
 var D = {  // サーバーから取得したマスタ類
-  ideas:[], stores:[], categories:[], tags:[],
+  ideas:[], stores:[], materialMasters:[], categories:[], tags:[],
   deptOptions:['店舗部門','ぎゅう丸ラボ'],
   statusOptions:['アイデア','採用'], unitOptions:[], yieldUnitOptions:[],
   allergenOptions:[], storageOptions:[], today:''
@@ -723,6 +785,46 @@ function calcCost(materials, yieldQty, price){
   return { cost:cost, costPer:costPer, costRate:costRate };
 }
 
+// 材料マスタに載っている材料から、栄養（合計＋1つあたり）を自動集計する。
+// 各材料は「使う量 / 基準量」の比で、基準量あたりの栄養を掛ける。
+var NUT_KEYS = ['kcal','protein','fat','carb','salt'];
+function autoNutrition(materials, yieldQty){
+  var total = { kcal:0, protein:0, fat:0, carb:0, salt:0 };
+  var any = false;
+  (materials||[]).forEach(function(m){
+    var mm = MMAP[String(m.name||'').trim()];
+    if(!mm) return;
+    var base = Number(mm.baseQty)||1;
+    var f = (Number(m.qty)||0) / base;
+    NUT_KEYS.forEach(function(k){ total[k] += (Number(mm[k])||0) * f; });
+    any = true;
+  });
+  var y = Number(yieldQty)||0;
+  var per = {};
+  NUT_KEYS.forEach(function(k){
+    var v = y > 0 ? total[k] / y : total[k];
+    per[k] = Math.round(v * 10) / 10;   // 小数第1位まで
+  });
+  return { any:any, per:per };
+}
+// 材料マスタから、含まれるアレルギーを重複なく集める
+function autoAllergens(materials){
+  var seen = {}, out = [];
+  (materials||[]).forEach(function(m){
+    var mm = MMAP[String(m.name||'').trim()];
+    if(!mm) return;
+    (mm.allergens||[]).forEach(function(a){ if(!seen[a]){ seen[a]=1; out.push(a); } });
+  });
+  return out;
+}
+// 材料名がマスタにあれば、その行の単位・単価（1単位あたり）を返す
+function masterUnitPrice(name){
+  var mm = MMAP[String(name||'').trim()];
+  if(!mm) return null;
+  var base = Number(mm.baseQty)||1;
+  return { unit: mm.unit || 'g', unitPrice: (Number(mm.price)||0) / base };
+}
+
 // ============================================================
 // 画面切替
 // ============================================================
@@ -745,7 +847,7 @@ document.querySelectorAll('[data-close]').forEach(function(b){
   on(b, 'click', function(){ q(b.dataset.close).classList.add('hidden'); });
 });
 // 背景（オーバーレイ）のクリックで閉じる。中身のクリックでは閉じない
-['detail','statusM'].forEach(function(id){
+['detail','statusM','mmM'].forEach(function(id){
   on(q(id), 'click', function(e){ if(e.target === q(id)) q(id).classList.add('hidden'); });
 });
 
@@ -754,14 +856,29 @@ document.querySelectorAll('[data-close]').forEach(function(b){
 // ============================================================
 function applyInitialData(data){
   D = Object.assign(D, data || {});
+  buildMMAP();
   restoreFilter();
   renderFilterPicks();
   renderStoreList();
   renderCatList();
   renderTagList();
+  renderMmList();
+  renderMaterialDatalist();
   renderPresPanel();
   fillFormSelects();
   render();
+}
+
+// 材料名 → マスタ obj の索引を作る。原価・栄養・アレルギーの自動計算で毎回引く
+function buildMMAP(){
+  MMAP = {};
+  (D.materialMasters || []).forEach(function(m){ MMAP[m.name] = m; });
+}
+// レシピの材料名入力に出す候補（datalist）
+function renderMaterialDatalist(){
+  q('materialList').innerHTML = (D.materialMasters || []).map(function(m){
+    return '<option value="' + esc(m.name) + '"></option>';
+  }).join('');
 }
 
 function reload(){
@@ -1136,16 +1253,26 @@ function detailHtml(i, materials, comments, posters){
       steps.map(function(s){ return '<li>' + esc(s) + '</li>'; }).join('') + '</ol></div>';
   }
 
-  // アレルギー・栄養・保存
-  if((i.allergens||[]).length){
+  // アレルギー（材料マスタからの自動＋手動追加を統合）
+  var autoAl = autoAllergens(materials);
+  var allAl = autoAl.slice();
+  (i.allergens||[]).forEach(function(a){ if(allAl.indexOf(a) < 0) allAl.push(a); });
+  if(allAl.length){
     h += '<div class="sec"><h4>アレルギー</h4><div class="picks">' +
-      i.allergens.map(function(a){ return '<span class="pick pick-sm on">' + esc(a) + '</span>'; }).join('') + '</div></div>';
+      allAl.map(function(a){ return '<span class="pick pick-sm on">' + esc(a) + '</span>'; }).join('') + '</div></div>';
   }
-  var nut = [['エネルギー', i.kcal, 'kcal'], ['たんぱく質', i.protein, 'g'], ['脂質', i.fat, 'g'],
-             ['炭水化物', i.carb, 'g'], ['食塩相当量', i.salt, 'g']].filter(function(n){ return n[1] !== '' && n[1] != null; });
-  if(nut.length){
+  // 栄養（材料マスタからの自動集計＋手動追加を合算）
+  var an = autoNutrition(materials, i.yieldQty);
+  var manual = { kcal:i.kcal, protein:i.protein, fat:i.fat, carb:i.carb, salt:i.salt };
+  var labels = { kcal:['エネルギー','kcal'], protein:['たんぱく質','g'], fat:['脂質','g'], carb:['炭水化物','g'], salt:['食塩相当量','g'] };
+  var nutRows = NUT_KEYS.map(function(k){
+    var v = (an.per[k] || 0) + (Number(manual[k]) || 0);
+    v = Math.round(v * 10) / 10;
+    return { label:labels[k][0], val:v, unit:labels[k][1], has:(an.any || (manual[k] !== '' && manual[k] != null)) };
+  }).filter(function(n){ return n.has; });
+  if(nutRows.length){
     h += '<div class="sec"><h4>栄養（1つあたり）</h4><dl class="kv">' +
-      nut.map(function(n){ return '<dt>' + n[0] + '</dt><dd>' + n[1] + ' ' + n[2] + '</dd>'; }).join('') + '</dl></div>';
+      nutRows.map(function(n){ return '<dt>' + n.label + '</dt><dd>' + n.val + ' ' + n.unit + '</dd>'; }).join('') + '</dl></div>';
   }
   if(i.storage || i.bestBefore){
     h += '<div class="sec"><h4>保存</h4><dl class="kv">' +
@@ -1433,7 +1560,8 @@ function renderMaterials(){
   q('i-materials').innerHTML = FORM.materials.map(function(m, idx){
     var amt = Math.round((Number(m.qty)||0) * (Number(m.unitPrice)||0));
     return '<tr data-i="' + idx + '">' +
-      '<td><input data-k="name" value="' + esc(m.name) + '" placeholder="鶏もも肉"></td>' +
+      '<td><input data-k="name" value="' + esc(m.name) + '" placeholder="材料を選ぶ/入力" list="materialList">' +
+        (MMAP[String(m.name||'').trim()] ? '<span class="mm-tag">マスタ</span>' : '') + '</td>' +
       '<td class="num"><input data-k="qty" type="number" inputmode="decimal" step="any" min="0" value="' + esc(m.qty) + '"></td>' +
       '<td><input data-k="unit" value="' + esc(m.unit) + '" list="unitList"></td>' +
       '<td class="num"><input data-k="unitPrice" type="number" inputmode="decimal" step="any" min="0" value="' + esc(m.unitPrice) + '"></td>' +
@@ -1448,6 +1576,27 @@ on(q('i-materials'), 'input', function(e){
   var tr = inp.closest('tr');
   var i = Number(tr.dataset.i);
   FORM.materials[i][inp.dataset.k] = inp.value;
+
+  // 材料名がマスタと一致したら、単位・単価をそのマスタの値で自動で埋める
+  if(inp.dataset.k === 'name'){
+    var mp = masterUnitPrice(inp.value);
+    if(mp){
+      FORM.materials[i].unit = mp.unit;
+      FORM.materials[i].unitPrice = mp.unitPrice;
+      var uInp = tr.querySelector('[data-k="unit"]');
+      var pInp = tr.querySelector('[data-k="unitPrice"]');
+      if(uInp) uInp.value = mp.unit;
+      if(pInp) pInp.value = mp.unitPrice;
+      // 「マスタ」バッジの付け外し
+      if(!tr.querySelector('.mm-tag')){
+        var tag = document.createElement('span'); tag.className = 'mm-tag'; tag.textContent = 'マスタ';
+        inp.parentNode.appendChild(tag);
+      }
+    }else{
+      var t = tr.querySelector('.mm-tag'); if(t) t.remove();
+    }
+  }
+
   // 金額セルだけを書き換える（行ごと作り直すとフォーカスと変換中の文字が飛ぶ）
   var amt = Math.round((Number(FORM.materials[i].qty)||0) * (Number(FORM.materials[i].unitPrice)||0));
   tr.querySelector('.amt').textContent = amt ? yen(amt) : '';
@@ -1477,6 +1626,29 @@ function recalc(){
   var r = q('c-rate');
   r.textContent = c.costRate ? c.costRate + '%' : '—';
   r.className = rateClass(c.costRate);
+  renderAutoNutri();
+}
+
+// 材料マスタからの自動栄養・自動アレルギーをフォームに表示する
+function renderAutoNutri(){
+  var n = autoNutrition(FORM.materials, q('i-yieldQty').value);
+  var box = q('autoNutri');
+  if(box){
+    if(n.any){
+      box.innerHTML = '材料からの自動集計（1つあたり）：' +
+        'エネルギー ' + n.per.kcal + 'kcal ／ たんぱく質 ' + n.per.protein + 'g ／ 脂質 ' + n.per.fat +
+        'g ／ 炭水化物 ' + n.per.carb + 'g ／ 食塩 ' + n.per.salt + 'g';
+    }else{
+      box.innerHTML = '材料マスタから選んだ材料があると、栄養がここに自動集計されます。';
+    }
+  }
+  var ab = q('autoAllergen');
+  if(ab){
+    var a = autoAllergens(FORM.materials);
+    ab.innerHTML = a.length
+      ? '材料から自動：' + a.map(function(x){ return '<span class="pick pick-sm on">' + esc(x) + '</span>'; }).join('')
+      : '<span class="hint">材料マスタから自動で付くアレルギーはありません</span>';
+  }
 }
 
 // ---- 写真（完成イメージ1枚。工程写真は廃止）----
@@ -1619,7 +1791,8 @@ function movedNames(list, name, dir){
 // ▲▼を連続で押しても、その都度サーバーへ送ると往復（1〜2秒）待ちで一覧がカクつくので、
 // クリックが止まって少し（450ms）経ってから、そのとき確定している並び順だけを送る。
 var REORDER_RENDER = {
-  reorderStores: renderStoreList, reorderCategories: renderCatList, reorderTags: renderTagList
+  reorderStores: renderStoreList, reorderCategories: renderCatList, reorderTags: renderTagList,
+  reorderMaterials: renderMmList
 };
 var reorderTimers = {};
 function reorderMaster(action, list, name, dir){
@@ -1683,6 +1856,94 @@ on(q('st-add'), 'click', function(){
   gsRun('addStore', { name:name, order:(D.stores||[]).length + 1 })
     .then(function(){ q('st-name').value = ''; toast('追加しました'); return reload(); })
     .catch(function(e){ toast(errMsg(e), true); });
+});
+
+// ============================================================
+// 材料マスタ（一覧・編集モーダル）
+// ============================================================
+function renderMmList(){
+  var list = D.materialMasters || [];
+  q('mmList').innerHTML = list.map(function(m, idx){
+    var per = m.baseQty + (m.unit||'') + ' / ¥' + Number(m.price||0).toLocaleString('ja-JP') +
+              (m.kcal !== '' && m.kcal != null ? ' / ' + m.kcal + 'kcal' : '');
+    return '<div class="mrow" data-name="' + esc(m.name) + '">' +
+      ordHtml(idx, list.length) +
+      '<div class="nm">' + esc(m.name) +
+        '<span class="sub"> ・ ' + esc(per) + (m.allergens.length ? ' ・ ' + esc(m.allergens.join('・')) : '') + '</span></div>' +
+      '<button class="btn btn-line btn-sm" data-act="edit">編集</button></div>';
+  }).join('') || '<div class="hint">材料が登録されていません。「＋ 材料を追加」から登録してください。</div>';
+}
+on(q('mmList'), 'click', function(e){
+  var b = e.target.closest('button');
+  if(!b) return;
+  var name = b.closest('.mrow').dataset.name;
+  if(b.dataset.act === 'up' || b.dataset.act === 'down'){
+    reorderMaster('reorderMaterials', D.materialMasters, name, b.dataset.act === 'up' ? -1 : 1);
+  }else if(b.dataset.act === 'edit'){
+    openMaterialModal(name);
+  }
+});
+on(q('mm-add'), 'click', function(){ openMaterialModal(null); });
+
+function openMaterialModal(name){
+  var m = name ? (D.materialMasters||[]).filter(function(x){ return x.name === name; })[0] : null;
+  MM_EDIT = name || null;
+  MM_ALLERGENS = m ? (m.allergens||[]).slice() : [];
+  q('mm-title').textContent = m ? '材料を編集' : '材料を追加';
+  q('mm-name').value = m ? m.name : '';
+  q('mm-supplier').value = m ? m.supplier : '';
+  q('mm-baseQty').value = m ? m.baseQty : '';
+  q('mm-unit').value = m ? m.unit : 'g';
+  q('mm-price').value = m && m.price ? m.price : '';
+  ['kcal','protein','fat','carb','salt'].forEach(function(k){
+    q('mm-' + k).value = (m && m[k] !== '' && m[k] != null) ? m[k] : '';
+  });
+  q('mm-memo').value = m ? m.memo : '';
+  q('mm-del').classList.toggle('hidden', !m);
+  renderMmAllergens();
+  q('mmM').classList.remove('hidden');
+}
+function renderMmAllergens(){
+  var a8 = (D.allergenOptions||[]).slice(0, 8);
+  var a20 = (D.allergenOptions||[]).slice(8);
+  function pick(a){ return '<button class="pick pick-sm' + (MM_ALLERGENS.indexOf(a) >= 0 ? ' on' : '') +
+    '" data-val="' + esc(a) + '">' + esc(a) + '</button>'; }
+  q('mm-allergen8').innerHTML = a8.map(pick).join('');
+  q('mm-allergen20').innerHTML = a20.map(pick).join('');
+}
+on(q('mm-allergen8'), 'click', function(e){ var b = e.target.closest('.pick'); if(!b) return;
+  toggleIn(MM_ALLERGENS, b.dataset.val); renderMmAllergens(); });
+on(q('mm-allergen20'), 'click', function(e){ var b = e.target.closest('.pick'); if(!b) return;
+  toggleIn(MM_ALLERGENS, b.dataset.val); renderMmAllergens(); });
+on(q('mm-save'), 'click', function(){
+  var data = {
+    name: q('mm-name').value.trim(),
+    baseQty: q('mm-baseQty').value, unit: q('mm-unit').value.trim() || 'g',
+    price: q('mm-price').value,
+    kcal: q('mm-kcal').value, protein: q('mm-protein').value, fat: q('mm-fat').value,
+    carb: q('mm-carb').value, salt: q('mm-salt').value,
+    allergens: MM_ALLERGENS, supplier: q('mm-supplier').value.trim(), memo: q('mm-memo').value.trim()
+  };
+  if(!data.name){ toast('材料名を入力してください', true); return; }
+  if(!(Number(data.baseQty) > 0)){ toast('基準量を入力してください', true); return; }
+  var btn = q('mm-save'); btn.disabled = true; btn.textContent = '保存中…';
+  gsRun('saveMaterial', MM_EDIT, data).then(function(list){
+    D.materialMasters = list || []; buildMMAP();
+    renderMmList(); renderMaterialDatalist();
+    q('mmM').classList.add('hidden');
+    toast('保存しました');
+  }).catch(function(e){ toast(errMsg(e), true); })
+  .then(function(){ btn.disabled = false; btn.textContent = '保存'; });
+});
+on(q('mm-del'), 'click', function(){
+  if(!MM_EDIT) return;
+  if(!confirm('材料「' + MM_EDIT + '」をマスタから削除しますか？\n（過去のレシピに入力済みの材料名はそのまま残ります）')) return;
+  gsRun('deleteMaterial', MM_EDIT).then(function(list){
+    D.materialMasters = list || []; buildMMAP();
+    renderMmList(); renderMaterialDatalist();
+    q('mmM').classList.add('hidden');
+    toast('削除しました');
+  }).catch(function(e){ toast(errMsg(e), true); });
 });
 
 function renderCatList(){

@@ -124,6 +124,27 @@ const MATERIAL_TEXT_COLS = [1, 3, 5, 8];
 const STORE_HEADERS   = ['店舗名', '表示順'];
 const STORE_TEXT_COLS = [1];
 
+// 材料マスタ。単価・栄養は材料ごとに「基準量＋単位」を自由に決めて登録する。
+// 例：鶏もも肉なら「1000g で 900円・1900kcal…」、玉ねぎなら「1個 で 30円・37kcal…」。
+// レシピではこのマスタから材料を選び、量を入れるだけで、基準量との比で原価・栄養・アレルギーを計算する。
+const MMASTER_SHEET_NAME = '材料マスタ';
+const MMASTER_HEADERS = [
+  '材料名', '表示順', '基準量', '単位', '単価(円)',
+  'エネルギー(kcal)', 'たんぱく質(g)', '脂質(g)', '炭水化物(g)', '食塩相当量(g)',
+  'アレルギー', '仕入れ先', 'メモ'
+];
+// 数値列（表示順・基準量・単価・栄養5項目）以外をテキスト書式にする
+const MMASTER_NUM_COLS  = [2, 3, 5, 6, 7, 8, 9, 10];
+const MMASTER_TEXT_COLS = MMASTER_HEADERS.map((_, i) => i + 1).filter(c => MMASTER_NUM_COLS.indexOf(c) < 0);
+const MMASTER_SEED = [
+  // [名前, 表示順, 基準量, 単位, 単価, kcal, たんぱく質, 脂質, 炭水化物, 食塩, アレルギー, 仕入れ先, メモ]
+  ['鶏もも肉', 1, 1000, 'g', 900, 1900, 166, 142, 0, 2, '鶏肉', '', ''],
+  ['牛豚合いびき肉', 2, 1000, 'g', 1300, 2500, 175, 200, 3, 3, '牛肉,豚肉', '', ''],
+  ['玉ねぎ', 3, 1, '個', 30, 74, 2, 0.2, 17.6, 0, '', '', '約200g/個'],
+  ['牛乳', 4, 1000, 'ml', 220, 610, 33, 38, 48, 1, '乳', '', ''],
+  ['卵', 5, 1, '個', 25, 76, 6.1, 5.1, 0.2, 0.2, '卵', '', '約50g/個']
+];
+
 // ポスターは商品（アイデア）ごとに保管し、1枚ずつ「どの店舗で使ったか」のラベルを付ける。
 // 商品の編集画面で追加し、詳細画面で一覧・ダウンロードする。
 // 画像はDriveに置き、シートにはファイルIDを持つ
@@ -204,6 +225,9 @@ function apiCall(passcode, action, args) {
     case 'renameTag':        return renameTag_(args[0], args[1]);
     case 'deleteTag':        return deleteTag_(args[0]);
     case 'reorderTags':      return reorderTags_(args[0]);
+    case 'saveMaterial':     return saveMaterial_(args[0], args[1]);
+    case 'deleteMaterial':   return deleteMaterial_(args[0]);
+    case 'reorderMaterials': return reorderMaterialsMaster_(args[0]);
     case 'addIdea':          return addIdea_(args[0]);
     case 'updateIdea':       return updateIdea_(args[0], args[1]);
     case 'updateIdeaStatus': return updateIdeaStatus_(args[0], args[1]);
@@ -372,6 +396,17 @@ function getStoreSheet_() {
   return sh;
 }
 
+function getMaterialMasterSheet_() {
+  const ss = getSpreadsheet_();
+  let sh = ss.getSheetByName(MMASTER_SHEET_NAME);
+  if (!sh) {
+    sh = ss.insertSheet(MMASTER_SHEET_NAME);
+    initSheet_(sh, MMASTER_HEADERS, MMASTER_TEXT_COLS, 1000);
+    sh.getRange(2, 1, MMASTER_SEED.length, MMASTER_HEADERS.length).setValues(MMASTER_SEED);
+  }
+  return sh;
+}
+
 function getPosterSheet_() {
   const ss = getSpreadsheet_();
   let sh = ss.getSheetByName(POSTER_SHEET_NAME);
@@ -441,6 +476,7 @@ function getInitialData_() {
   return {
     ideas: ideas,
     stores: getStoreList_(),
+    materialMasters: getMaterialMasterList_(),
     categories: getCategoryList_(),
     tags: getTagList_(),
     deptOptions: DEPT_OPTIONS,
@@ -1319,6 +1355,126 @@ function deleteCategory_(name) {
   } finally {
     lock.releaseLock();
   }
+}
+
+// ============================================================
+// 材料マスタ
+// ============================================================
+// 各値は「基準量(baseQty) の 単位(unit) あたり」の値。レシピでは (使う量 / baseQty) を掛ける。
+function mmasterRowToObj_(r) {
+  return {
+    name: String(r[0]).trim(),
+    order: numOrZero_(r[1]),
+    baseQty: numOrZero_(r[2]) || 1,   // 0だと除算できないので最低1
+    unit: r[3] || 'g',
+    price: numOrZero_(r[4]),
+    kcal: numOrBlank_(r[5]),
+    protein: numOrBlank_(r[6]),
+    fat: numOrBlank_(r[7]),
+    carb: numOrBlank_(r[8]),
+    salt: numOrBlank_(r[9]),
+    allergens: splitList_(r[10]),
+    supplier: r[11] || '',
+    memo: r[12] || ''
+  };
+}
+
+function getMaterialMasterList_() {
+  const sh = getMaterialMasterSheet_();
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return [];
+  return sh.getRange(2, 1, lastRow - 1, MMASTER_HEADERS.length).getValues()
+    .filter(r => String(r[0]).trim() !== '')
+    .map(mmasterRowToObj_)
+    .sort((a, b) => (a.order - b.order) || (a.name < b.name ? -1 : 1));
+}
+
+// 追加も更新も1つの関数で扱う。oldName が空なら新規、あれば更新（改名時はレシピ側の材料名も追随）。
+// data = { name, baseQty, unit, price, kcal, protein, fat, carb, salt, allergens[], supplier, memo }
+function saveMaterial_(oldName, data) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    data = data || {};
+    const name = validateMasterName_(data.name, '材料名');
+    if (numOrZero_(data.baseQty) <= 0) throw new Error('基準量は1以上で入力してください');
+    const sh = getMaterialMasterSheet_();
+    const lastRow = sh.getLastRow();
+    const names = lastRow >= 2 ? sh.getRange(2, 1, lastRow - 1, 1).getValues().map(r => String(r[0]).trim()) : [];
+    const old = String(oldName || '').trim();
+    const editingIdx = old ? names.indexOf(old) : -1;
+
+    // 同名重複チェック（自分自身は除く）
+    const dup = names.indexOf(name);
+    if (dup >= 0 && dup !== editingIdx) throw new Error('同じ名前の材料が既にあります');
+
+    const order = editingIdx >= 0
+      ? numOrZero_(sh.getRange(editingIdx + 2, 2, 1, 1).getValue())
+      : (names.length + 1);
+    const row = [
+      name, order, numOrZero_(data.baseQty), String(data.unit || 'g').trim(),
+      numOrZero_(data.price),
+      numOrBlank_(data.kcal), numOrBlank_(data.protein), numOrBlank_(data.fat),
+      numOrBlank_(data.carb), numOrBlank_(data.salt),
+      joinList_(data.allergens), String(data.supplier || '').trim(), String(data.memo || '').trim()
+    ];
+
+    const rowNum = editingIdx >= 0 ? editingIdx + 2 : sh.getLastRow() + 1;
+    MMASTER_TEXT_COLS.forEach(col => sh.getRange(rowNum, col, 1, 1).setNumberFormat('@'));
+    sh.getRange(rowNum, 1, 1, MMASTER_HEADERS.length).setValues([row]);
+
+    // 改名したらレシピ（材料シート）の材料名も一括で追随させる
+    if (old && old !== name) renameRecipeMaterial_(old, name);
+
+    return getMaterialMasterList_();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function deleteMaterial_(name) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const sh = getMaterialMasterSheet_();
+    const lastRow = sh.getLastRow();
+    if (lastRow >= 2) {
+      const names = sh.getRange(2, 1, lastRow - 1, 1).getValues();
+      const idx = names.findIndex(r => String(r[0]).trim() === String(name).trim());
+      if (idx >= 0) sh.deleteRow(idx + 2);
+    }
+    // レシピ側の行はあえて消さない（過去のレシピの材料名として残す）。
+    // マスタから外れた材料は栄養・アレルギーの自動集計に乗らなくなるだけ。
+    return getMaterialMasterList_();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function reorderMaterialsMaster_(names) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    reorderMasterRows_(getMaterialMasterSheet_(), MMASTER_HEADERS, MMASTER_TEXT_COLS, names, 2);
+    return getMaterialMasterList_();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// 材料シート（レシピの子）の「材料名」列を一括置換する（材料マスタ改名時のカスケード）
+function renameRecipeMaterial_(oldName, newName) {
+  const sh = getMaterialSheet_();
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return 0;
+  const range = sh.getRange(2, 3, lastRow - 1, 1);   // 3列目 = 材料名
+  const values = range.getValues();
+  let count = 0;
+  values.forEach(r => {
+    if (String(r[0]).trim() === String(oldName).trim()) { r[0] = newName; count++; }
+  });
+  if (count) range.setValues(values);
+  return count;
 }
 
 // ============================================================
