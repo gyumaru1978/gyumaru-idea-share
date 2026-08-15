@@ -175,7 +175,9 @@ const DEPT_OPTIONS = ['店舗部門', 'ぎゅう丸ラボ'];
 //   アイデア … まだ検討段階のもの（旧「提案中／検討中／見送り」はすべてこれに寄せる）
 //   採用     … 商品化が決まったもの
 // 既存データは migrateIdeaSheet_ が旧ステータスを自動でこの2択へ寄せる。
-const STATUS_OPTIONS = ['アイデア', '採用'];
+// 表示は「採用→アイデア」の順。ただし新規・空欄の既定は「アイデア」なので別に持つ
+const STATUS_OPTIONS = ['採用', 'アイデア'];
+const STATUS_DEFAULT = 'アイデア';
 const UNIT_OPTIONS   = ['g', 'kg', 'ml', 'L', '個', '枚', '本', '袋', '缶', '大さじ', '小さじ', '適量'];
 const YIELD_UNIT_OPTIONS = ['食', '個', '本', '枚', 'パック', 'kg'];
 // 特定原材料8品目＋準ずるもの20品目（消費者庁の表示区分に対応）
@@ -251,10 +253,10 @@ function apiCall(passcode, action, args) {
 function checkPasscode_(passcode) {
   const stored = PropertiesService.getScriptProperties().getProperty('APP_PASSCODE');
   if (!stored) {
-    throw new Error('合い言葉(APP_PASSCODE)が未設定です。GASのプロジェクト設定＞スクリプト プロパティで設定してください。');
+    throw new Error('あいことば(APP_PASSCODE)が未設定です。GASのプロジェクト設定＞スクリプト プロパティで設定してください。');
   }
   if (String(passcode) !== String(stored)) {
-    throw new Error('合い言葉が違います');
+    throw new Error('あいことばが違います');
   }
 }
 
@@ -263,10 +265,10 @@ function checkPasscode_(passcode) {
 function checkPresident_(pass) {
   const stored = PropertiesService.getScriptProperties().getProperty('PRESIDENT_PASSCODE');
   if (!stored) {
-    throw new Error('社長用合い言葉(PRESIDENT_PASSCODE)が未設定です。GASのプロジェクト設定＞スクリプト プロパティで設定してください。');
+    throw new Error('社長用あいことば(PRESIDENT_PASSCODE)が未設定です。GASのプロジェクト設定＞スクリプト プロパティで設定してください。');
   }
   if (String(pass) !== String(stored)) {
-    throw new Error('社長用の合い言葉が違います');
+    throw new Error('社長用のあいことばが違います');
   }
 }
 
@@ -555,7 +557,7 @@ function rowToIdea_(row, rowNum) {
     catch: cell_(row, IDEA_COL.catch),
     store: cell_(row, IDEA_COL.store),
     date: cell_(row, IDEA_COL.date),
-    status: cell_(row, IDEA_COL.status) || STATUS_OPTIONS[0],
+    status: cell_(row, IDEA_COL.status) || STATUS_DEFAULT,
     categories: splitList_(cell_(row, IDEA_COL.categories)),
     tags: splitList_(cell_(row, IDEA_COL.tags)),
     yieldQty: numOrZero_(cell_(row, IDEA_COL.yieldQty)),
@@ -595,7 +597,7 @@ function ideaToRow_(id, data, costs, photo1, photo2, updatedAt, presAt) {
   set(IDEA_COL.catch, data.catch || '');
   set(IDEA_COL.store, String(data.store || '').trim());
   set(IDEA_COL.date, data.date || todayStr_());
-  set(IDEA_COL.status, data.status || STATUS_OPTIONS[0]);
+  set(IDEA_COL.status, data.status || STATUS_DEFAULT);
   set(IDEA_COL.categories, joinList_(data.categories));
   set(IDEA_COL.tags, joinList_(data.tags));
   set(IDEA_COL.yieldQty, numOrZero_(data.yieldQty));

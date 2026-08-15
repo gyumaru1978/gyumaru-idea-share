@@ -150,11 +150,11 @@ img{max-width:100%;display:block}
    タグで区切ると同じ案が複数の見出しの下に重複して現れてしまうから。
    はっきりした帯にし、スクロール中も今どのカテゴリを見ているか分かるよう上部に貼り付ける。 */
 .ghead{display:flex;align-items:center;gap:.6rem;margin:1.2rem 0 .7rem;padding:.5rem .85rem;
-  background:var(--brand);border-radius:9px;box-shadow:var(--shadow);
+  background:var(--brand-light);border:1px solid var(--brand);border-radius:9px;
   position:sticky;top:var(--ghead-top,96px);z-index:6}
 .ghead:first-child{margin-top:.2rem}
-.ghead h3{font-size:.95rem;font-weight:800;color:#fff;letter-spacing:.03em;flex:0 0 auto}
-.ghead .gn{font-size:.72rem;color:#fff;font-weight:700;background:rgba(255,255,255,.22);
+.ghead h3{font-size:.95rem;font-weight:800;color:var(--brand-dark);letter-spacing:.03em;flex:0 0 auto}
+.ghead .gn{font-size:.72rem;color:var(--brand-dark);font-weight:700;background:rgba(255,255,255,.6);
   border-radius:999px;padding:.1rem .55rem}
 .empty{text-align:center;padding:3.5rem 1rem;color:var(--ink-faint)}
 .empty .ic{font-size:2.5rem;margin-bottom:.5rem}
@@ -333,8 +333,8 @@ img{max-width:100%;display:block}
 <div id="gate" class="gate">
   <div class="gate-card">
     <h2>新商品アイデア共有</h2>
-    <p>合い言葉を入力してください</p>
-    <input id="gateInput" type="password" inputmode="text" autocomplete="off" placeholder="合い言葉">
+    <p>あいことばを入力してください</p>
+    <input id="gateInput" type="password" inputmode="text" autocomplete="off" placeholder="あいことば">
     <button id="gateBtn" class="btn btn-primary">開く</button>
     <p id="gateMsg" class="gate-msg"></p>
   </div>
@@ -563,10 +563,10 @@ img{max-width:100%;display:block}
   <div class="panel mpanel hidden" data-mkey="president">
     <h3>社長モード</h3>
     <p style="font-size:.75rem;color:var(--ink-faint);margin-bottom:.7rem">
-      社長用の合い言葉を入力すると、各商品に「社長からのコメント・方針」を投稿できるようになります。
-      合い言葉はGASのスクリプト プロパティ（PRESIDENT_PASSCODE）で設定します。</p>
+      社長用のあいことばを入力すると、各商品に「社長からのコメント・方針」を投稿できるようになります。
+      あいことばはGASのスクリプト プロパティ（PRESIDENT_PASSCODE）で設定します。</p>
     <div class="addrow" id="presForm">
-      <input id="pres-pass" type="password" autocomplete="off" placeholder="社長用の合い言葉">
+      <input id="pres-pass" type="password" autocomplete="off" placeholder="社長用のあいことば">
       <button id="pres-on" class="btn btn-primary btn-sm">有効にする</button>
     </div>
     <button id="pres-off" class="btn btn-line btn-sm hidden">社長モードを解除する</button>
@@ -698,7 +698,7 @@ var MM_ALLERGENS = [];    // 材料マスタ編集モーダルで選択中のア
 var D = {  // サーバーから取得したマスタ類
   ideas:[], stores:[], materialMasters:[], categories:[], tags:[],
   deptOptions:['店舗部門','ぎゅう丸ラボ'],
-  statusOptions:['アイデア','採用'], unitOptions:[], yieldUnitOptions:[],
+  statusOptions:['採用','アイデア'], unitOptions:[], yieldUnitOptions:[],
   allergenOptions:[], storageOptions:[], today:''
 };
 // group は一覧の並び順。既定は「カテゴリごと」にまとめて表示。
@@ -724,7 +724,7 @@ function gsRun(fnName){
 }
 function errMsg(e){ return (e && e.message) ? e.message : String(e); }
 function isNotConfigured(e){ return errMsg(e).indexOf('未設定') >= 0; }
-function isAuthErr(e){ return errMsg(e).indexOf('合い言葉が違います') >= 0; }
+function isAuthErr(e){ return errMsg(e).indexOf('あいことばが違います') >= 0; }
 
 // GASのサンドボックス化されたiframe内ではlocalStorageへのアクセスがブロックされ
 // 例外を投げることがあるため、必ずtry/catchで包む
@@ -1166,8 +1166,8 @@ function renderStats(rows, base){
   q('stats').innerHTML =
     tile('unread', unread, '未読', F.unread, true) +
     tile('all', rows.length, '表示中', none, false) +
-    tile('アイデア', count('アイデア'), 'アイデア', F.status === 'アイデア', false) +
-    tile('採用', count('採用'), '採用', F.status === '採用', false);
+    tile('採用', count('採用'), '採用', F.status === '採用', false) +
+    tile('アイデア', count('アイデア'), 'アイデア', F.status === 'アイデア', false);
 }
 
 function cardHtml(i){
@@ -1932,7 +1932,7 @@ function renderStoreList(){
     return '<div class="mrow" data-name="' + esc(s.name) + '">' +
       ordHtml(idx, list.length) +
       '<div class="nm">' + esc(s.name) + '<span class="sub"> ・ ' + (counts[s.name]||0) + '件</span></div>' +
-      '<button class="btn btn-line btn-sm" data-act="rename">改名</button>' +
+      '<button class="btn btn-line btn-sm" data-act="rename">編集</button>' +
       '<button class="btn btn-danger btn-sm" data-act="del">削除</button></div>';
   }).join('') || '<div class="hint">店舗が登録されていません</div>';
 }
@@ -1946,7 +1946,7 @@ on(q('storeList'), 'click', function(e){
     var st = (D.stores||[]).filter(function(x){ return x.name === name; })[0] || {};
     gsRun('updateStore', name, { name:nn, order:st.order })
       .then(function(r){
-        toast(r.renamed ? '改名しました（' + r.renamed + '件のアイデアも更新）' : '改名しました');
+        toast(r.renamed ? '変更しました（' + r.renamed + '件のアイデアも更新）' : '変更しました');
         return reload();
       }).catch(function(err){ toast(errMsg(err), true); });
   }else{
@@ -2057,7 +2057,7 @@ function renderCatList(){
     return '<div class="mrow" data-name="' + esc(c) + '">' +
       ordHtml(idx, list.length) +
       '<div class="nm">' + esc(c) + '<span class="sub"> ・ ' + (counts[c]||0) + '件</span></div>' +
-      '<button class="btn btn-line btn-sm" data-act="rename">改名</button>' +
+      '<button class="btn btn-line btn-sm" data-act="rename">編集</button>' +
       '<button class="btn btn-danger btn-sm" data-act="del">削除</button></div>';
   }).join('') || '<div class="hint">カテゴリが登録されていません</div>';
 }
@@ -2069,7 +2069,7 @@ on(q('catList'), 'click', function(e){
     var nn = prompt('新しいカテゴリ名（付いている全アイデアに反映されます）', name);
     if(nn == null) return;
     gsRun('renameCategory', name, nn)
-      .then(function(r){ toast(r.renamed ? '改名しました（' + r.renamed + '件のアイデアに反映）' : '改名しました'); return reload(); })
+      .then(function(r){ toast(r.renamed ? '変更しました（' + r.renamed + '件のアイデアに反映）' : '変更しました'); return reload(); })
       .catch(function(err){ toast(errMsg(err), true); });
   }else{
     if(!confirm('カテゴリ「' + name + '」を削除しますか？')) return;
@@ -2099,7 +2099,7 @@ function renderTagList(){
       ordHtml(idx, list.length) +
       '<div class="nm">#' + esc(t) +
         '<span class="sub"> ・ ' + (n ? n + '件' : '未使用') + '</span></div>' +
-      '<button class="btn btn-line btn-sm" data-act="rename">改名</button>' +
+      '<button class="btn btn-line btn-sm" data-act="rename">編集</button>' +
       '<button class="btn btn-danger btn-sm" data-act="del">削除</button></div>';
   }).join('') || '<div class="hint">タグが登録されていません</div>';
 }
@@ -2112,7 +2112,7 @@ on(q('tagList'), 'click', function(e){
     if(nn == null) return;
     gsRun('renameTag', name, nn)
       .then(function(r){
-        toast(r.renamed ? '改名しました（' + r.renamed + '件のアイデアに反映）' : '改名しました');
+        toast(r.renamed ? '変更しました（' + r.renamed + '件のアイデアに反映）' : '変更しました');
         return reload();
       })
       .catch(function(err){ toast(errMsg(err), true); });
@@ -2153,7 +2153,7 @@ function renderPosterFormArea(){
     '<input type="file" accept="image/*" class="sr" id="pfile"></label>';
   area.innerHTML =
     '<div class="prow"><select id="pstore" class="pstore">' + storeOpts + '</select>' +
-      '<span class="hint" style="align-self:center">↑店舗を選んでから枠をタップ</span></div>' +
+      '<span class="hint" style="align-self:center">店舗を選んでから下の枠をタップ</span></div>' +
     '<div class="pframes">' + saved + buffered + addFrame + '</div>';
   on(q('pfile'), 'change', onPosterPicked);
 }
@@ -2232,7 +2232,7 @@ function renderPresPanel(){
 }
 on(q('pres-on'), 'click', function(){
   var pass = String(q('pres-pass').value || '').trim();
-  if(!pass){ toast('社長用の合い言葉を入力してください', true); return; }
+  if(!pass){ toast('社長用のあいことばを入力してください', true); return; }
   var btn = q('pres-on');
   btn.disabled = true; btn.textContent = '確認中…';
   gsRun('verifyPresident', pass)
@@ -2269,7 +2269,7 @@ function setMe(name){
 function unlock(passcode){
   passcode = String(passcode||'').trim();
   var btn = q('gateBtn'), msg = q('gateMsg');
-  if(!passcode){ msg.textContent = '合い言葉を入力してください'; return; }
+  if(!passcode){ msg.textContent = 'あいことばを入力してください'; return; }
   btn.disabled = true; btn.textContent = '確認中…';
   PASSCODE = passcode;
   gsRun('getInitialData').then(function(data){
@@ -2280,7 +2280,7 @@ function unlock(passcode){
     PASSCODE = '';
     // 「合い言葉が違います」と一律に出すと、サーバー側の設定漏れに気づけないため分けて出す
     msg.textContent = isNotConfigured(e) ? errMsg(e)
-      : (isAuthErr(e) ? '合い言葉が違います' : errMsg(e));
+      : (isAuthErr(e) ? 'あいことばが違います' : errMsg(e));
     q('gateInput').value = '';
     q('gateInput').focus();
   }).then(function(){
