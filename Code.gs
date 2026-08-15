@@ -149,8 +149,8 @@ const MMASTER_SEED = [
 // 商品の編集画面で追加し、詳細画面で一覧・ダウンロードする。
 // 画像はDriveに置き、シートにはファイルIDを持つ
 // （URLでなくIDにしておくと、表示用サムネイルとダウンロード用リンクの両方を組み立てられる）。
-const POSTER_HEADERS   = ['ポスターID', 'アイデアID', '店舗', 'タイトル', 'ファイルID', '登録日時', '登録者'];
-const POSTER_TEXT_COLS = [1, 2, 3, 4, 5, 6, 7];
+const POSTER_HEADERS   = ['ポスターID', 'アイデアID', '店舗', 'ファイルID', '登録日時', '登録者'];
+const POSTER_TEXT_COLS = [1, 2, 3, 4, 5, 6];
 
 const CATEGORY_HEADER = 'カテゴリ名';
 const TAG_HEADER      = 'タグ名';
@@ -413,6 +413,17 @@ function getPosterSheet_() {
   if (!sh) {
     sh = ss.insertSheet(POSTER_SHEET_NAME);
     initSheet_(sh, POSTER_HEADERS, POSTER_TEXT_COLS, 1000);
+  } else {
+    // 廃止した「タイトル」列があれば削除する（1回だけ。以降は何もしない）
+    const lastCol = sh.getLastColumn();
+    if (lastCol >= 1) {
+      const header = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(v => String(v).trim());
+      const idx = header.indexOf('タイトル');
+      if (idx >= 0) {
+        sh.deleteColumn(idx + 1);
+        sh.getRange(1, 1, 1, POSTER_HEADERS.length).setValues([POSTER_HEADERS]);
+      }
+    }
   }
   return sh;
 }
@@ -1206,15 +1217,14 @@ function getPostersFor_(ideaId) {
   return sh.getRange(2, 1, lastRow - 1, POSTER_HEADERS.length).getValues()
     .filter(r => String(r[1]).trim() === target)
     .map(r => {
-      const fileId = String(r[4]).trim();
+      const fileId = String(r[3]).trim();
       return {
         id: String(r[0]).trim(),
         ideaId: String(r[1]).trim(),
         store: String(r[2]).trim(),
-        title: r[3] || '',
         fileId: fileId,
-        at: r[5] || '',
-        by: r[6] || '',
+        at: r[4] || '',
+        by: r[5] || '',
         thumbUrl: 'https://drive.google.com/thumbnail?id=' + fileId + '&sz=w1000',
         downloadUrl: 'https://drive.google.com/uc?export=download&id=' + fileId
       };
@@ -1222,7 +1232,7 @@ function getPostersFor_(ideaId) {
     .sort((a, b) => (a.at < b.at ? 1 : -1));   // 新しい順
 }
 
-// data = { ideaId, store, title, image(dataURL), by }
+// data = { ideaId, store, image(dataURL), by }  ※タイトルは廃止
 function addPoster_(data) {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);   // 画像アップロードを含むので長めに
@@ -1243,8 +1253,7 @@ function addPoster_(data) {
     const rowNum = sh.getLastRow() + 1;
     POSTER_TEXT_COLS.forEach(col => sh.getRange(rowNum, col, 1, 1).setNumberFormat('@'));
     sh.getRange(rowNum, 1, 1, POSTER_HEADERS.length).setValues([[
-      id, ideaId, store, String(data.title || '').trim(), fileId, nowStr_(),
-      String(data.by || '').trim()
+      id, ideaId, store, fileId, nowStr_(), String(data.by || '').trim()
     ]]);
     return getPostersFor_(ideaId);
   } finally {
@@ -1263,7 +1272,7 @@ function deletePoster_(id) {
     const idx = rows.findIndex(r => String(r[0]).trim() === String(id).trim());
     if (idx < 0) throw new Error('ポスターが見つかりません: ' + id);
     const ideaId = String(rows[idx][1]).trim();
-    const fileId = String(rows[idx][4]).trim();
+    const fileId = String(rows[idx][3]).trim();
     sh.deleteRow(idx + 2);
     if (fileId) { try { DriveApp.getFileById(fileId).setTrashed(true); } catch (e) {} }
     return getPostersFor_(ideaId);

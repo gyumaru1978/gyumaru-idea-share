@@ -254,16 +254,27 @@ img{max-width:100%;display:block}
 .dphotos img{border-radius:10px;aspect-ratio:4/3;object-fit:cover;width:100%}
 
 /* ===== ポスター =====
-   カードは幅いっぱいに広げず、小さめの固定幅サムネイルを折り返して並べる */
-.pgrid{display:flex;flex-wrap:wrap;gap:.7rem}
-.pcard{background:#fff;border-radius:12px;box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column;
-  width:10rem;max-width:100%}
+   完成イメージと同じ「枠をタップして選ぶ」方式。枠を折り返して小さく並べる（幅いっぱいにしない） */
+.pgrid{display:flex;flex-wrap:wrap;gap:.7rem}       /* 詳細画面のポスター一覧に使用 */
+.pcard{background:#fff;border-radius:12px;box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column;width:8rem;max-width:100%}
 .pcard-img{aspect-ratio:3/4;background:var(--bg);overflow:hidden}
 .pcard-img img{width:100%;height:100%;object-fit:cover}
-.pcard-body{padding:.5rem .55rem;display:flex;flex-direction:column;gap:.3rem}
-.pcard-store{font-size:.8rem;font-weight:700;line-height:1.3}
-.pcard-actions{display:flex;gap:.35rem;margin-top:.1rem}
-.pcard-actions .btn{flex:1;text-align:center;padding:.32rem .3rem}
+.pcard-body{padding:.4rem .5rem;display:flex;flex-direction:column;gap:.25rem}
+.pcard-store{font-size:.78rem;font-weight:700;line-height:1.3}
+.pcard-actions{display:flex;gap:.3rem;margin-top:.05rem}
+.pcard-actions .btn{flex:1;text-align:center;padding:.3rem .2rem}
+/* 編集フォームのポスター枠（完成イメージ .ph と同じ見た目の小さめ版） */
+.pframes{display:flex;flex-wrap:wrap;gap:.6rem;margin-top:.6rem}
+.pframe{position:relative;width:7rem;aspect-ratio:3/4;border-radius:10px;overflow:hidden;background:var(--bg);
+  border:1px solid var(--line);flex:0 0 auto}
+.pframe img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.pframe-store{position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.55);color:#fff;
+  font-size:.66rem;font-weight:700;padding:.15rem .3rem;text-align:center}
+.pframe-dl{position:absolute;left:.25rem;bottom:.25rem;z-index:2;background:var(--brand);color:#fff;
+  font-size:.6rem;font-weight:700;border-radius:5px;padding:.1rem .3rem}
+.pframe.padd{border:2px dashed var(--line);display:flex;align-items:center;justify-content:center;text-align:center;
+  color:var(--ink-faint);font-size:.68rem;line-height:1.3;padding:.4rem;cursor:pointer}
+.pframe.padd:hover{border-color:var(--brand);color:var(--brand-dark)}
 .prow{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center}
 .prow .pstore{flex:0 0 auto;min-width:8rem;padding:.5rem .6rem;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:.85rem}
 .prow > input{flex:1;min-width:8rem;padding:.5rem .65rem;border:1px solid var(--line);border-radius:8px;font-size:.85rem}
@@ -2106,37 +2117,33 @@ on(q('tg-add'), 'click', function(){
 // 編集フォームのポスター欄。完成イメージと同じく、新規登録中でも先に選んでおける。
 //   FORM.posters    … 既に保存済み（サーバー由来。すぐ削除できる）
 //   FORM.newPosters … この画面で選んだが未保存の分（保存時にまとめて登録）
+// 完成イメージと同じく「枠をタップして画像を選ぶ」方式。店舗を選んでから枠をタップする。
 function renderPosterFormArea(){
   var area = q('posterFormArea');
   var storeOpts = (D.stores||[]).map(function(s){
     return '<option value="' + esc(s.name) + '">' + esc(s.name) + '</option>';
   }).join('');
-  var saved = (FORM.posters||[]).map(function(p){ return posterCardHtml(p, false, 0); }).join('');
-  var buffered = (FORM.newPosters||[]).map(function(p, i){ return posterCardHtml(p, true, i); }).join('');
-  var cards = saved + buffered ||
-    '<div class="hint" style="grid-column:1/-1">まだポスターがありません</div>';
+  var saved = (FORM.posters||[]).map(function(p){ return posterFrameHtml(p, false, 0); }).join('');
+  var buffered = (FORM.newPosters||[]).map(function(p, i){ return posterFrameHtml(p, true, i); }).join('');
+  // 末尾に「＋追加」枠。ここをタップすると（選択中の店舗で）画像を選べる
+  var addFrame = '<label class="pframe padd">＋ ポスターを追加<br>タップして選択' +
+    '<input type="file" accept="image/*" class="sr" id="pfile"></label>';
   area.innerHTML =
-    '<div class="prow">' +
-      '<select id="pstore" class="pstore">' + storeOpts + '</select>' +
-      '<label class="btn btn-line btn-sm" style="white-space:nowrap">画像を選ぶ' +
-        '<input type="file" accept="image/*" class="sr" id="pfile"></label>' +
-    '</div>' +
-    '<div class="pgrid" style="margin-top:.7rem">' + cards + '</div>';
+    '<div class="prow"><select id="pstore" class="pstore">' + storeOpts + '</select>' +
+      '<span class="hint" style="align-self:center">↑店舗を選んでから枠をタップ</span></div>' +
+    '<div class="pframes">' + saved + buffered + addFrame + '</div>';
   on(q('pfile'), 'change', onPosterPicked);
 }
 // buffered=true は未保存（保存時に登録）。idx は FORM.newPosters の位置
-function posterCardHtml(p, buffered, idx){
+function posterFrameHtml(p, buffered, idx){
   var img = buffered ? p.image : p.thumbUrl;
-  var actions = buffered
-    ? '<button type="button" class="btn btn-danger btn-sm" data-buf="' + idx + '">取り消し</button>'
-    : '<a class="btn btn-primary btn-sm" href="' + esc(p.downloadUrl) + '" target="_blank" rel="noopener">DL</a>' +
-      '<button type="button" class="btn btn-danger btn-sm" data-id="' + esc(p.id) + '">削除</button>';
-  return '<div class="pcard">' +
-    '<div class="pcard-img"><img src="' + esc(img) + '" alt="" loading="lazy"></div>' +
-    '<div class="pcard-body">' +
-      '<div class="pcard-store">' + esc(p.store) + (buffered ? '（保存時に追加）' : '') + '</div>' +
-      '<div class="pcard-actions">' + actions + '</div>' +
-    '</div></div>';
+  var xattr = buffered ? 'data-buf="' + idx + '"' : 'data-id="' + esc(p.id) + '"';
+  return '<div class="pframe">' +
+    '<img src="' + esc(img) + '" alt="">' +
+    (buffered ? '' : '<a class="pframe-dl" href="' + esc(p.downloadUrl) + '" target="_blank" rel="noopener">DL</a>') +
+    '<button type="button" class="ph-x" ' + xattr + '>✕</button>' +
+    '<span class="pframe-store">' + esc(p.store) + '</span>' +
+    '</div>';
 }
 // ポスターは印刷にも使うので、写真より高解像度（長辺2000px・品質0.85）で保存する
 function onPosterPicked(e){
