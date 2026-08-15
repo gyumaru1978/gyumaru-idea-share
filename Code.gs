@@ -224,7 +224,8 @@ function apiCall(passcode, action, args) {
     case 'getInitialData':   return getInitialData_(args[0]);
     case 'getIdeaDetail':    return getIdeaDetail_(args[0]);
     case 'postComment':      return postComment_(args[0], args[1], args[2]);
-    case 'markSeen':         return markSeen_(args[0]);
+    case 'deleteComment':    return deleteComment_(args[0], args[1], args[2]);
+    case 'markSeen':         return markSeen_(args[0], args[1]);
     case 'verifyPresident':  return verifyPresident_(args[0]);
     case 'addTag':           return addTag_(args[0]);
     case 'renameTag':        return renameTag_(args[0], args[1]);
@@ -947,14 +948,18 @@ function getCommentsFor_(ideaId) {
   const sh = getCommentSheet_();
   const lastRow = sh.getLastRow();
   if (lastRow < 2) return [];
+  // row（物理行番号）も返す。社長コメントの削除はこの行番号を指定して行う。
   return sh.getRange(2, 1, lastRow - 1, COMMENT_HEADERS.length).getValues()
-    .filter(r => String(r[0]) === String(ideaId))
-    .map(r => ({
+    .map((r, idx) => ({
+      row: idx + 2,
+      _id: String(r[0]),
       kind: r[1] || KIND_TO_PRES,
       author: r[2] || '',
       text: r[3] || '',
       at: r[4] || ''
-    }));
+    }))
+    .filter(c => c._id === String(ideaId))
+    .map(c => ({ row: c.row, kind: c.kind, author: c.author, text: c.text, at: c.at }));
     // 追記しかしないシートなので行順＝時系列。日時文字列でソートし直すと
     // 同じ「分」に投稿された複数コメントの前後関係が崩れるため、行順のまま返す
 }
@@ -1002,9 +1007,46 @@ function postComment_(ideaId, payload, presidentPass) {
   }
 }
 
-// 「見ました」確認。確認日時を now にして、その商品の New を全員ぶん消す（端末非依存の共有フラグ）。
-// 社長へ返信しただけでは消えない（明示的に確認したときだけ消す方針）。
-function markSeen_(ideaId) {
+// 社長からのコメントを1件削除する（社長モードのときだけ）。
+// row は getCommentsFor_ が返す物理行番号。念のため ideaId と種別を照合してから消す。
+// 削除後は残っている社長コメントの最新日時で presAt を貼り直し、Newの状態を実態に合わせる。
+function deleteComment_(ideaId, row, presidentPass) {
+  checkPresident_(presidentPass);
+  row = Number(row);
+  if (!(row >= 2)) throw new Error('コメントが見つかりません');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const sh = getCommentSheet_();
+    if (row > sh.getLastRow()) throw new Error('コメントが見つかりません（画面を再読み込みしてください）');
+    const vals = sh.getRange(row, 1, 1, COMMENT_HEADERS.length).getValues()[0];
+    if (String(vals[0]) !== String(ideaId))
+      throw new Error('コメントが変わっています（画面を再読み込みしてください）');
+    if (vals[1] !== KIND_FROM_PRES)
+      throw new Error('社長からのコメントだけ削除できます');
+    sh.deleteRow(row);
+
+    const ideaSh = getIdeaSheet_();
+    const rowNum = findIdeaRow_(ideaSh, ideaId);
+    if (rowNum < 0) throw new Error('アイデアが見つかりません: ' + ideaId);
+    const remaining = getCommentsFor_(ideaId);
+    const presCmts = remaining.filter(c => c.kind === KIND_FROM_PRES);
+    const newPresAt = presCmts.length ? presCmts[presCmts.length - 1].at : '';
+    ideaSh.getRange(rowNum, IDEA_COL.presAt, 1, 1).setNumberFormat('@');
+    ideaSh.getRange(rowNum, IDEA_COL.presAt, 1, 1).setValues([[newPresAt]]);
+
+    const irow = ideaSh.getRange(rowNum, 1, 1, IDEA_HEADERS.length).getValues()[0];
+    return { idea: rowToIdea_(irow, rowNum), comments: remaining };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// 「見ました」確認の切り替え。seen=true で確認日時を now にしてNewを全員ぶん消す。
+// seen=false なら確認日時を空にしてNewを戻す（誰でも自由にON/OFFできる共有フラグ）。
+// 引数省略時は true（従来互換）。
+function markSeen_(ideaId, seen) {
+  const on = (seen === undefined || seen === null) ? true : !!seen;
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
@@ -1012,7 +1054,7 @@ function markSeen_(ideaId) {
     const rowNum = findIdeaRow_(sh, ideaId);
     if (rowNum < 0) throw new Error('アイデアが見つかりません: ' + ideaId);
     sh.getRange(rowNum, IDEA_COL.seenAt, 1, 1).setNumberFormat('@');
-    sh.getRange(rowNum, IDEA_COL.seenAt, 1, 1).setValues([[nowStr_()]]);
+    sh.getRange(rowNum, IDEA_COL.seenAt, 1, 1).setValues([[on ? nowStr_() : '']]);
     const row = sh.getRange(rowNum, 1, 1, IDEA_HEADERS.length).getValues()[0];
     return { idea: rowToIdea_(row, rowNum) };
   } finally {

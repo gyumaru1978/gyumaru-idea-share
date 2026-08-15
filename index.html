@@ -140,6 +140,23 @@ img{max-width:100%;display:block}
 .readchk.done{background:var(--brand-tint);border-color:var(--brand);color:var(--brand-dark)}
 .hdr-pres{font-size:.68rem;background:#fbbf24;color:#78350f;border-radius:999px;padding:.14rem .55rem;font-weight:700;white-space:nowrap}
 
+/* ===== コメントの2チャンネル =====
+   「社長から」と「社長へ」を色分けした枠でくっきり分ける。向き（誰→誰）も右肩に表示。 */
+.ch{border-radius:12px;border:1px solid var(--line);margin-bottom:.9rem;overflow:hidden}
+.ch-head{display:flex;align-items:center;gap:.5rem;padding:.5rem .8rem;font-size:.82rem;font-weight:800}
+.ch-head .ch-dir{margin-left:auto;font-size:.64rem;font-weight:700;padding:.14rem .55rem;border-radius:999px;white-space:nowrap}
+.ch-body{padding:.75rem .8rem}
+.ch-from{border-color:#fcd34d}
+.ch-from>.ch-head{background:#fef3c7;color:#92400e;border-bottom:1px solid #fcd34d}
+.ch-from>.ch-head .ch-dir{background:#fde68a;color:#78350f}
+.ch-to{border-color:#c7d2fe}
+.ch-to>.ch-head{background:#eef2ff;color:#3730a3;border-bottom:1px solid #c7d2fe}
+.ch-to>.ch-head .ch-dir{background:#e0e7ff;color:#3730a3}
+.pb-head{align-items:center}
+.cmt-del{font-size:.64rem;font-weight:700;color:var(--danger);background:transparent;border:1px solid var(--danger);
+  border-radius:6px;padding:.08rem .45rem;cursor:pointer;margin-left:.5rem;flex:0 0 auto}
+.cmt-del:hover{background:var(--danger);color:#fff}
+
 .pill{display:inline-block;padding:.16rem .5rem;border-radius:999px;font-size:.68rem;font-weight:700;white-space:nowrap}
 .pill-アイデア{background:#2563eb;color:#fff}
 .pill-採用{background:var(--brand);color:#fff}
@@ -1260,14 +1277,19 @@ function detailHtml(i, materials, comments, posters){
   meta += '<dt>提案日</dt><dd>' + esc(i.date||'—') + '</dd>';
   h += '<div class="sec"><dl class="kv">' + meta + '</dl></div>';
 
-  // ---- 社長からのコメント・方針 ----
+  // ---- 社長からのコメント・方針（琥珀色チャンネル） ----
   // 最新を強調表示し、過去の履歴は折りたたみ。「以前はどういう方針だったか」を後から追える
   var pres = comments.filter(function(c){ return c.kind === KIND_FROM_PRES; });
-  h += '<div class="sec"><h4>社長からのコメント・方針</h4>';
+  // 社長モードのときだけ、社長コメントに削除ボタンを出す
+  function presDel(c){
+    return PRES ? '<button type="button" class="cmt-del" data-row="' + c.row + '">削除</button>' : '';
+  }
+  h += '<div class="ch ch-from"><div class="ch-head">社長からのコメント・方針' +
+       '<span class="ch-dir">社長 → みんな</span></div><div class="ch-body">';
   if(pres.length){
     var latest = pres[pres.length - 1];
     h += '<div class="pres-box"><div class="pb-head"><span>' + esc(latest.author) + '</span>' +
-         '<span>' + esc(latest.at) + '</span></div>' +
+         '<span>' + esc(latest.at) + presDel(latest) + '</span></div>' +
          '<div class="pb-text">' + esc(latest.text) + '</div></div>';
     if(pres.length > 1){
       var olds = pres.slice(0, -1).reverse();   // 新しい履歴から順に
@@ -1276,15 +1298,16 @@ function detailHtml(i, materials, comments, posters){
            '<div id="presHist" class="hidden">' +
            olds.map(function(c){
              return '<div class="pres-box pres-old"><div class="pb-head"><span>' + esc(c.author) +
-               '</span><span>' + esc(c.at) + '</span></div>' +
+               '</span><span>' + esc(c.at) + presDel(c) + '</span></div>' +
                '<div class="pb-text">' + esc(c.text) + '</div></div>';
            }).join('') + '</div>';
     }
-    // 「見ました」チェックで確認日時を更新し、全員のNewを消す（端末非依存の共有フラグ）
+    // 「見ました」チェックで確認日時を更新し、全員のNewを消す（端末非依存の共有フラグ）。
+    // 誰でも自由にON/OFFできる。チェックを外すとNewが戻る。
     var done = !isNew(i);
     h += '<label class="readchk' + (done ? ' done' : '') + '" id="readWrap">' +
-         '<input type="checkbox" id="readChk"' + (done ? ' checked disabled' : '') + '>' +
-         '<span id="readLbl">' + (done ? '確認済み' : '見ました（Newを消す）') + '</span></label>';
+         '<input type="checkbox" id="readChk"' + (done ? ' checked' : '') + '>' +
+         '<span id="readLbl">' + (done ? '確認済み（クリックで戻す）' : '見ました（Newを消す）') + '</span></label>';
   }else{
     h += '<div style="font-size:.8rem;color:var(--ink-faint)">まだコメントはありません</div>';
   }
@@ -1294,12 +1317,13 @@ function detailHtml(i, materials, comments, posters){
          '<div class="crow"><input id="presName" placeholder="お名前（任意）" value="">' +
          '<button type="button" id="presPost" class="btn btn-primary btn-sm">投稿する</button></div></div>';
   }
-  h += '</div>';
+  h += '</div></div>';
 
-  // ---- 社長へのコメント ----
+  // ---- 社長へのコメント（青色チャンネル） ----
   // 社長からの一方通行にしないための双方向チャンネル。誰でも投稿できる
   var toPres = comments.filter(function(c){ return c.kind !== KIND_FROM_PRES; });
-  h += '<div class="sec"><h4>社長へのコメント</h4>';
+  h += '<div class="ch ch-to"><div class="ch-head">社長へのコメント' +
+       '<span class="ch-dir">みんな → 社長</span></div><div class="ch-body">';
   h += toPres.map(function(c){
     return '<div class="cmt"><div class="c-head"><span>' + esc(c.author || '（名前なし）') + '</span>' +
       '<span>' + esc(c.at) + '</span></div>' +
@@ -1308,7 +1332,7 @@ function detailHtml(i, materials, comments, posters){
   h += '<div class="cform">' +
        '<textarea id="toPresInput" placeholder="社長コメントへの質問・意見、気づいたことなど"></textarea>' +
        '<div class="crow"><input id="toPresName" placeholder="お名前（任意）" value="">' +
-       '<button type="button" id="toPresPost" class="btn btn-line btn-sm">投稿する</button></div></div></div>';
+       '<button type="button" id="toPresPost" class="btn btn-line btn-sm">投稿する</button></div></div></div></div>';
 
   // 材料・原価
   h += '<div class="sec"><h4>材料・原価</h4>';
@@ -1403,23 +1427,50 @@ on(q('d-body'), 'click', function(e){
     submitComment(KIND_FROM_PRES, 'presInput', 'presName', t);
   }else if(t.id === 'toPresPost'){
     submitComment(KIND_TO_PRES, 'toPresInput', 'toPresName', t);
+  }else if(t.classList.contains('cmt-del')){
+    deletePresComment(t);
   }
 });
 
-// 「見ました」チェック。サーバーの確認日時を更新して、全員のNewを消す（元に戻すのは不可＝一方向）
-on(q('d-body'), 'change', function(e){
-  if(e.target.id !== 'readChk' || !DETAIL) return;
-  if(!e.target.checked) return;
-  e.target.disabled = true;
+// 社長からのコメントを削除（社長モードのみ。サーバー側でも社長あいことばを再検証する）
+function deletePresComment(btn){
+  if(!DETAIL || !PRES) return;
+  if(!confirm('この社長コメントを削除します。\n元に戻せません。よろしいですか？')) return;
+  var row = Number(btn.getAttribute('data-row'));
   var id = DETAIL.id;
-  q('readWrap').classList.add('done');
-  q('readLbl').textContent = '確認済み';
-  gsRun('markSeen', id).then(function(res){
+  btn.disabled = true;
+  gsRun('deleteComment', id, row, PRES).then(function(res){
     DETAIL = res.idea;
     var idx = D.ideas.findIndex(function(i){ return String(i.id) === String(id); });
     if(idx >= 0) D.ideas[idx] = res.idea;
-    render();   // 背後の一覧のNewを消す
-  }).catch(function(err){ toast(errMsg(err), true); });
+    q('d-body').innerHTML = detailHtml(res.idea, DETAIL_MATS, res.comments || [], DETAIL_POSTERS);
+    render();
+    toast('削除しました');
+  }).catch(function(e){ btn.disabled = false; toast(errMsg(e), true); });
+}
+
+// 「見ました」チェック。誰でも自由にON/OFFできる共有フラグ。
+// ONで確認日時を now にして全員のNewを消し、OFFで確認日時を空にしてNewを戻す。
+on(q('d-body'), 'change', function(e){
+  if(e.target.id !== 'readChk' || !DETAIL) return;
+  var want = e.target.checked;
+  e.target.disabled = true;
+  var id = DETAIL.id;
+  gsRun('markSeen', id, want).then(function(res){
+    DETAIL = res.idea;
+    var idx = D.ideas.findIndex(function(i){ return String(i.id) === String(id); });
+    if(idx >= 0) D.ideas[idx] = res.idea;
+    var done = !isNew(res.idea);
+    q('readWrap').classList.toggle('done', done);
+    q('readLbl').textContent = done ? '確認済み（クリックで戻す）' : '見ました（Newを消す）';
+    e.target.checked = done;
+    e.target.disabled = false;
+    render();   // 背後の一覧のNewを更新
+  }).catch(function(err){
+    e.target.checked = !want;   // 失敗したら見た目を戻す
+    e.target.disabled = false;
+    toast(errMsg(err), true);
+  });
 });
 
 function submitComment(kind, textId, nameId, btn){
