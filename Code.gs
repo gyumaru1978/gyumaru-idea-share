@@ -64,11 +64,12 @@ const SPREADSHEET_ID = '14aEoP1eeF4LrClVLxgpiUiqQDEfA2cWde5aRYFnnFnI';
 const IDEA_SHEET_NAME     = 'アイデア';
 const MATERIAL_SHEET_NAME = '材料';
 const STORE_SHEET_NAME    = '店舗';
-const EVENT_SHEET_NAME    = 'イベント';
 const CATEGORY_SHEET_NAME = 'カテゴリ';
 const TAG_SHEET_NAME      = 'タグ';
 const COMMENT_SHEET_NAME  = 'コメント';
+const POSTER_SHEET_NAME   = 'ポスター';
 const PHOTO_FOLDER_NAME   = '新商品アイデア_写真';
+const POSTER_FOLDER_NAME  = '新商品アイデア_ポスター';
 
 // ============================================================
 // アイデアシートの列定義
@@ -78,26 +79,25 @@ const PHOTO_FOLDER_NAME   = '新商品アイデア_写真';
 // 写真・更新日時などが静かにズレて壊れるため。
 const IDEA_COL = {
   id: 1, name: 2, catch: 3, store: 4, date: 5,
-  status: 6, month: 7, event: 8, categories: 9, tags: 10,
-  yieldQty: 11, yieldUnit: 12, cost: 13, costPer: 14, price: 15, costRate: 16,
-  steps: 17, allergens: 18,
-  kcal: 19, protein: 20, fat: 21, carb: 22, salt: 23,
-  storage: 24, bestBefore: 25, memo: 26,
-  photo1: 27, photo2: 28, updatedAt: 29, updatedBy: 30,
-  // 後から追加した列は移行を単純にするため必ず末尾に足す（途中に挿すと既存データがズレる）
-  dept: 31,     // 部門（店舗部門／ぎゅう丸ラボ）
-  presAt: 32    // 社長コメントの最終投稿日時。一覧の未読判定に使う非正規化値で、
+  status: 6, categories: 7, tags: 8,
+  yieldQty: 9, yieldUnit: 10, cost: 11, costPer: 12, price: 13, costRate: 14,
+  steps: 15, allergens: 16,
+  kcal: 17, protein: 18, fat: 19, carb: 20, salt: 21,
+  storage: 22, bestBefore: 23, memo: 24,
+  photo1: 25, photo2: 26, updatedAt: 27, updatedBy: 28,
+  dept: 29,     // 部門（店舗部門／ぎゅう丸ラボ）
+  presAt: 30    // 社長コメントの最終投稿日時。一覧の未読判定に使う非正規化値で、
                 // 正本はコメントシート。postComment_ が社長投稿のたびに書き換える
 };
 
-// 分類の軸は4つ。それぞれ役割が違う。
+// 分類の軸は3つ。それぞれ役割が違う。
 //   店舗     … どの店舗から出た案か。マスタで管理（店舗間で共有するため必須）
 //   カテゴリ … 商品の種類。マスタで管理し、勝手に増やせない（惣菜／デザート／麺 など）
-//   タグ     … 誰でも自由に付けられる横断ラベル（SNS映え／春の定番／低カロリー など）。マスタ無し
-//   イベント … 採用先の催事。マスタで管理
+//   タグ     … 誰でも自由に付けられる横断ラベル（SNS映え／春の定番／低カロリー など）。マスタで管理
+// ※「採用月」「イベント」列は運用をやめて廃止した（migrateIdeaSheet_ が既存シートから列を削除する）。
 const IDEA_HEADERS = [
   'アイデアID', '商品名', 'キャッチコピー', '提案店舗', '提案日',
-  'ステータス', '採用月', 'イベント', 'カテゴリ', 'タグ',
+  'ステータス', 'カテゴリ', 'タグ',
   '出来上がり数', '出来上がり単位', '原価合計', '1食あたり原価', '想定売価', '原価率(%)',
   '作り方', 'アレルギー',
   'エネルギー(kcal)', 'たんぱく質(g)', '脂質(g)', '炭水化物(g)', '食塩相当量(g)',
@@ -121,11 +121,13 @@ const IDEA_TEXT_COLS = IDEA_HEADERS
 const MATERIAL_HEADERS   = ['アイデアID', '表示順', '材料名', '数量', '単位', '単価', '金額', '備考'];
 const MATERIAL_TEXT_COLS = [1, 3, 5, 8];
 
-const EVENT_HEADERS   = ['イベント名', '開催時期', '表示順', '備考'];
-const EVENT_TEXT_COLS = [1, 2, 4];
-
 const STORE_HEADERS   = ['店舗名', '表示順'];
 const STORE_TEXT_COLS = [1];
+
+// ポスターは店舗ごとに保管する。1店舗に何枚でも。画像はDriveに置き、シートにはファイルIDを持つ
+// （URLでなくIDにしておくと、表示用サムネイルとダウンロード用リンクの両方を組み立てられる）。
+const POSTER_HEADERS   = ['ポスターID', '店舗', 'タイトル', 'ファイルID', '登録日時', '登録者', 'メモ'];
+const POSTER_TEXT_COLS = [1, 2, 3, 4, 5, 6, 7];
 
 const CATEGORY_HEADER = 'カテゴリ名';
 const TAG_HEADER      = 'タグ名';
@@ -146,7 +148,11 @@ const COMMENT_KINDS     = [KIND_FROM_PRES, KIND_TO_PRES];
 // 「どちらの事業の商品か」を表す。一覧のタブで切り替える。
 const DEPT_OPTIONS = ['店舗部門', 'ぎゅう丸ラボ'];
 
-const STATUS_OPTIONS = ['提案中', '検討中', '採用', '見送り'];
+// ステータスは2択に簡略化した。
+//   アイデア … まだ検討段階のもの（旧「提案中／検討中／見送り」はすべてこれに寄せる）
+//   採用     … 商品化が決まったもの
+// 既存データは migrateIdeaSheet_ が旧ステータスを自動でこの2択へ寄せる。
+const STATUS_OPTIONS = ['アイデア', '採用'];
 const UNIT_OPTIONS   = ['g', 'kg', 'ml', 'L', '個', '枚', '本', '袋', '缶', '大さじ', '小さじ', '適量'];
 const YIELD_UNIT_OPTIONS = ['食', '個', '本', '枚', 'パック', 'kg'];
 // 特定原材料8品目＋準ずるもの20品目（消費者庁の表示区分に対応）
@@ -169,12 +175,6 @@ const TAG_SEED = [
 
 // 店舗の初期値。実際の店舗名は「マスタ」画面から追加・削除できる。
 const STORE_SEED    = [['嬉野本店', 1], ['武雄店', 2]];
-const EVENT_SEED = [
-  ['秋の物産展', '10月', 1, ''],
-  ['春の物産展', '4月', 2, ''],
-  ['夏のギフト', '7月', 3, ''],
-  ['定番化検討', '通年', 9, 'イベントに紐づかない定番候補']
-];
 const CATEGORY_SEED = ['惣菜', 'デザート', '弁当・丼', 'パン', '麺', '季節限定', '新食材', 'リニューアル'];
 
 function doGet(e) {
@@ -210,10 +210,9 @@ function apiCall(passcode, action, args) {
     case 'updateStore':      return updateStore_(args[0], args[1]);
     case 'deleteStore':      return deleteStore_(args[0]);
     case 'reorderStores':    return reorderStores_(args[0]);
-    case 'addEvent':         return addEvent_(args[0]);
-    case 'updateEvent':      return updateEvent_(args[0], args[1]);
-    case 'deleteEvent':      return deleteEvent_(args[0]);
-    case 'reorderEvents':    return reorderEvents_(args[0]);
+    case 'getPosters':       return getPosters_(args[0]);
+    case 'addPoster':        return addPoster_(args[0]);
+    case 'deletePoster':     return deletePoster_(args[0]);
     case 'addCategory':      return addCategory_(args[0]);
     case 'deleteCategory':   return deleteCategory_(args[0]);
     case 'reorderCategories':return reorderCategories_(args[0]);
@@ -284,21 +283,28 @@ function getIdeaSheet_() {
 //   v2: 「提案者」列の廃止（更新者と重複していたため削除）
 //   v3: 「部門」「社長コメント日時」列を末尾に追加。
 //       既存行の部門は、提案店舗が「ぎゅう丸ラボ」ならぎゅう丸ラボ、それ以外は店舗部門で初期化する
+//   v4: ステータスを2択（アイデア／採用）へ寄せる。旧「提案中／検討中／見送り」→「アイデア」
+//   v5: 運用をやめた「採用月」「イベント」列を削除する
 function migrateIdeaSheet_(sh) {
   const lastCol = sh.getLastColumn();
   if (lastCol < 1) return;
   let header = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(v => String(v).trim());
 
-  // v2: 提案者列の削除
-  const authorIdx = header.indexOf('提案者');
-  if (authorIdx >= 0) {
-    sh.deleteColumn(authorIdx + 1);   // 右側の列は自動で左へ詰まる
-    header.splice(authorIdx, 1);
-  }
+  // 廃止した列を削除する。右にあるものから順に消すと、削除で左に詰まっても残りの位置がずれない。
+  // （提案者=v2、採用月・イベント=v5。イベントの方が右なので先に消す）
+  let structural = false;
+  ['イベント', '採用月', '提案者'].forEach(name => {
+    const idx = header.indexOf(name);
+    if (idx >= 0) {
+      sh.deleteColumn(idx + 1);
+      header.splice(idx, 1);
+      structural = true;
+    }
+  });
 
   // v3: 部門・社長コメント日時の追加（必ず末尾に足す。途中に挿すと既存データがズレる）
   const needDept = header.indexOf('部門') < 0;
-  if (authorIdx >= 0 || needDept) {
+  if (structural || needDept) {
     sh.getRange(1, 1, 1, IDEA_HEADERS.length).setValues([IDEA_HEADERS]);
     const rows = Math.max(sh.getMaxRows() - 1, 1);
     IDEA_TEXT_COLS.forEach(col => sh.getRange(2, col, rows, 1).setNumberFormat('@'));
@@ -314,6 +320,34 @@ function migrateIdeaSheet_(sh) {
       sh.getRange(2, IDEA_COL.dept, lastRow - 1, 1).setValues(depts);
     }
   }
+
+  // v4: 旧ステータスを新2択へ正規化（該当する値が残っていなければ何もしない）
+  const lastRow = sh.getLastRow();
+  if (lastRow >= 2) {
+    const range = sh.getRange(2, IDEA_COL.status, lastRow - 1, 1);
+    const values = range.getValues();
+    let changed = false;
+    values.forEach(r => {
+      const s = String(r[0]).trim();
+      if (s === '' || s === 'アイデア' || s === '採用') return;
+      r[0] = (s === '採用') ? '採用' : 'アイデア';   // 提案中/検討中/見送り など → アイデア
+      changed = true;
+    });
+    if (changed) {
+      sh.getRange(2, IDEA_COL.status, lastRow - 1, 1).setNumberFormat('@');
+      range.setValues(values);
+    }
+  }
+}
+
+// 使わなくなったシートの後片付け。
+// 「既読」シートは、既読を名前ごとにサーバー管理していた頃の名残。
+// 既読は端末ローカル(localStorage)方式に変えたので不要になった。
+// データが入っている場合は消さない（想定外の使われ方をしていたら残す方が安全）。
+function cleanupLegacySheets_() {
+  const ss = getSpreadsheet_();
+  const sh = ss.getSheetByName('既読');
+  if (sh && sh.getLastRow() <= 1) ss.deleteSheet(sh);
 }
 
 function getMaterialSheet_() {
@@ -337,13 +371,12 @@ function getStoreSheet_() {
   return sh;
 }
 
-function getEventSheet_() {
+function getPosterSheet_() {
   const ss = getSpreadsheet_();
-  let sh = ss.getSheetByName(EVENT_SHEET_NAME);
+  let sh = ss.getSheetByName(POSTER_SHEET_NAME);
   if (!sh) {
-    sh = ss.insertSheet(EVENT_SHEET_NAME);
-    initSheet_(sh, EVENT_HEADERS, EVENT_TEXT_COLS, 500);
-    sh.getRange(2, 1, EVENT_SEED.length, EVENT_HEADERS.length).setValues(EVENT_SEED);
+    sh = ss.insertSheet(POSTER_SHEET_NAME);
+    initSheet_(sh, POSTER_HEADERS, POSTER_TEXT_COLS, 1000);
   }
   return sh;
 }
@@ -402,11 +435,11 @@ function getCommentSheet_() {
 // 代償は「同じ人がPCとスマホで見ると片方でまた未読に見える」ことだが、
 // 見逃す方向には壊れないので実害は小さい。
 function getInitialData_() {
+  cleanupLegacySheets_();
   const ideas = getIdeas_();
   return {
     ideas: ideas,
     stores: getStoreList_(),
-    events: getEvents_(),
     categories: getCategoryList_(),
     tags: getTagList_(),
     deptOptions: DEPT_OPTIONS,
@@ -415,9 +448,7 @@ function getInitialData_() {
     yieldUnitOptions: YIELD_UNIT_OPTIONS,
     allergenOptions: ALLERGEN_OPTIONS,
     storageOptions: STORAGE_OPTIONS,
-    monthOptions: buildMonthOptions_(ideas),
-    today: todayStr_(),
-    thisMonth: thisMonthStr_()
+    today: todayStr_()
   };
 }
 
@@ -475,8 +506,6 @@ function rowToIdea_(row, rowNum) {
     store: cell_(row, IDEA_COL.store),
     date: cell_(row, IDEA_COL.date),
     status: cell_(row, IDEA_COL.status) || STATUS_OPTIONS[0],
-    month: cell_(row, IDEA_COL.month),          // 採用月 'yyyy/MM'
-    event: cell_(row, IDEA_COL.event),
     categories: splitList_(cell_(row, IDEA_COL.categories)),
     tags: splitList_(cell_(row, IDEA_COL.tags)),
     yieldQty: numOrZero_(cell_(row, IDEA_COL.yieldQty)),
@@ -517,8 +546,6 @@ function ideaToRow_(id, data, costs, photo1, photo2, updatedAt, presAt) {
   set(IDEA_COL.store, String(data.store || '').trim());
   set(IDEA_COL.date, data.date || todayStr_());
   set(IDEA_COL.status, data.status || STATUS_OPTIONS[0]);
-  set(IDEA_COL.month, data.month || '');
-  set(IDEA_COL.event, data.event || '');
   set(IDEA_COL.categories, joinList_(data.categories));
   set(IDEA_COL.tags, joinList_(data.tags));
   set(IDEA_COL.yieldQty, numOrZero_(data.yieldQty));
@@ -605,25 +632,6 @@ function todayStr_() {
 
 function nowStr_() {
   return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy/MM/dd HH:mm');
-}
-
-function thisMonthStr_() {
-  return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy/MM');
-}
-
-// 採用月の選択肢。実際に使われている月と、今月の前後（-3ヶ月〜+9ヶ月）を混ぜて降順で返す。
-// 未来月を先に出しておくことで「2026年11月の枠に今から案を入れておく」運用ができる。
-function buildMonthOptions_(ideas) {
-  const set = {};
-  (ideas || []).forEach(idea => {
-    if (idea.month) set[idea.month] = true;
-  });
-  const base = new Date();
-  for (let i = -3; i <= 9; i++) {
-    const d = new Date(base.getFullYear(), base.getMonth() + i, 1);
-    set[Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy/MM')] = true;
-  }
-  return Object.keys(set).sort().reverse();
 }
 
 // ============================================================
@@ -786,11 +794,13 @@ function updateIdea_(id, data) {
     const materials = data.materials || [];
     const costs = calcCost_(materials, data.yieldQty, data.price);
     const photo1 = resolvePhoto_(data.photo1, cell_(oldRow, IDEA_COL.photo1));
-    const photo2 = resolvePhoto_(data.photo2, cell_(oldRow, IDEA_COL.photo2));
+    // 工程写真(photo2)は画面から廃止したが、過去に登録した画像は消さずそのまま引き継ぐ
+    const photo2 = cell_(oldRow, IDEA_COL.photo2);
     const updatedAt = nowStr_();
-    // 提案日は登録時のものを引き継ぐ（編集で今日に書き換わってしまわないように）。
-    // 社長コメント日時もフォーム編集では変わらない値なので旧行から引き継ぐ
-    const merged = Object.assign({}, data, { date: data.date || cell_(oldRow, IDEA_COL.date) });
+    // 提案日はフォームでは変えない値なので旧行から引き継ぐ（編集で今日に書き換わらないように）
+    const merged = Object.assign({}, data, {
+      date: data.date || cell_(oldRow, IDEA_COL.date)
+    });
     const row = ideaToRow_(id, merged, costs, photo1, photo2, updatedAt,
                            cell_(oldRow, IDEA_COL.presAt));
 
@@ -805,9 +815,9 @@ function updateIdea_(id, data) {
   }
 }
 
-// 一覧・詳細からのステータス変更専用。フォーム全体を送り直さないので
-// 写真の再アップロードも材料の再書き込みも起きない（会議中に連続で「採用」を押す場面用）。
-// patch = { status, month, event, updatedBy }
+// 一覧・詳細からのステータス変更専用（アイデア⇄採用のワンタップ切り替え）。
+// フォーム全体を送り直さないので写真の再アップロードも材料の再書き込みも起きない。
+// patch = { status, updatedBy }
 function updateIdeaStatus_(id, patch) {
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
@@ -816,20 +826,12 @@ function updateIdeaStatus_(id, patch) {
     if (STATUS_OPTIONS.indexOf(patch.status) < 0) {
       throw new Error('不正なステータスです: ' + patch.status);
     }
-    if (patch.month && !/^\d{4}\/\d{2}$/.test(String(patch.month))) {
-      throw new Error('採用月の形式が不正です: ' + patch.month);
-    }
     const sh = getIdeaSheet_();
     const rowNum = findIdeaRow_(sh, id);
     if (rowNum < 0) throw new Error('アイデアが見つかりません: ' + id);
 
     applyIdeaTextFormat_(sh, rowNum);
-    // ステータス・採用月・イベントは隣り合っているのでまとめて書ける
-    sh.getRange(rowNum, IDEA_COL.status, 1, 3).setValues([[
-      patch.status,
-      patch.month || '',
-      patch.event || ''
-    ]]);
+    sh.getRange(rowNum, IDEA_COL.status, 1, 1).setValues([[patch.status]]);
     sh.getRange(rowNum, IDEA_COL.updatedAt, 1, 2)
       .setValues([[nowStr_(), String(patch.updatedBy || '').trim()]]);
 
@@ -865,9 +867,6 @@ function validateIdeaInput_(data) {
   if (!String(data.store || '').trim())           throw new Error('提案店舗を選択してください');
   if (data.status && STATUS_OPTIONS.indexOf(data.status) < 0) {
     throw new Error('不正なステータスです: ' + data.status);
-  }
-  if (data.month && !/^\d{4}\/\d{2}$/.test(String(data.month))) {
-    throw new Error('採用月の形式が不正です: ' + data.month);
   }
   if (data.dept && DEPT_OPTIONS.indexOf(data.dept) < 0) {
     throw new Error('不正な部門です: ' + data.dept);
@@ -1157,92 +1156,98 @@ function deleteStore_(name) {
 }
 
 // ============================================================
-// イベント管理
+// ポスター（店舗ごとに保管、ダウンロード可）
 // ============================================================
-function getEvents_() {
-  const sh = getEventSheet_();
+// 店舗を指定して、その店舗のポスター一覧を返す（store 未指定なら全店舗ぶん）。
+// 表示用サムネイルとダウンロード用リンクの両方を組み立てて返す。
+function getPosters_(store) {
+  const sh = getPosterSheet_();
   const lastRow = sh.getLastRow();
   if (lastRow < 2) return [];
-  return sh.getRange(2, 1, lastRow - 1, EVENT_HEADERS.length).getValues()
+  const target = String(store == null ? '' : store).trim();
+  return sh.getRange(2, 1, lastRow - 1, POSTER_HEADERS.length).getValues()
     .filter(r => String(r[0]).trim() !== '')
-    .map(r => ({
-      name: String(r[0]).trim(),
-      period: r[1] || '',
-      order: numOrZero_(r[2]),
-      memo: r[3] || ''
-    }))
-    .sort((a, b) => (a.order - b.order) || (a.name < b.name ? -1 : 1));
+    .filter(r => !target || String(r[1]).trim() === target)
+    .map(r => {
+      const fileId = String(r[3]).trim();
+      return {
+        id: String(r[0]).trim(),
+        store: String(r[1]).trim(),
+        title: r[2] || '',
+        fileId: fileId,
+        at: r[4] || '',
+        by: r[5] || '',
+        memo: r[6] || '',
+        thumbUrl: 'https://drive.google.com/thumbnail?id=' + fileId + '&sz=w1000',
+        downloadUrl: 'https://drive.google.com/uc?export=download&id=' + fileId
+      };
+    })
+    .sort((a, b) => (a.at < b.at ? 1 : -1));   // 新しい順
 }
 
-function addEvent_(data) {
+// data = { store, title, image(dataURL), memo, by }
+function addPoster_(data) {
   const lock = LockService.getScriptLock();
-  lock.waitLock(15000);
+  lock.waitLock(30000);   // 画像アップロードを含むので長めに
   try {
-    const name = validateMasterName_(data && data.name, 'イベント名');
-    if (getEvents_().some(e => e.name === name)) {
-      throw new Error('同じ名前のイベントが既にあります');
-    }
-    const sh = getEventSheet_();
+    data = data || {};
+    const store = String(data.store || '').trim();
+    if (!store) throw new Error('店舗を選択してください');
+    if (getStoreList_().every(s => s.name !== store)) throw new Error('存在しない店舗です: ' + store);
+    const img = String(data.image || '');
+    if (img.indexOf('data:') !== 0) throw new Error('ポスター画像を選択してください');
+
+    const fileId = uploadToFolder_(img, getPosterFolder_(), 'poster_');
+    const sh = getPosterSheet_();
+    const id = generateNextPosterId_(sh);
     const rowNum = sh.getLastRow() + 1;
-    EVENT_TEXT_COLS.forEach(col => sh.getRange(rowNum, col, 1, 1).setNumberFormat('@'));
-    sh.getRange(rowNum, 1, 1, EVENT_HEADERS.length).setValues([[
-      name, data.period || '', numOrZero_(data.order), data.memo || ''
+    POSTER_TEXT_COLS.forEach(col => sh.getRange(rowNum, col, 1, 1).setNumberFormat('@'));
+    sh.getRange(rowNum, 1, 1, POSTER_HEADERS.length).setValues([[
+      id, store, String(data.title || '').trim(), fileId, nowStr_(),
+      String(data.by || '').trim(), String(data.memo || '').trim()
     ]]);
-    return getEvents_();
+    return getPosters_(store);
   } finally {
     lock.releaseLock();
   }
 }
 
-// イベント名がそのままキーなので、改名したらアイデア側の「イベント」列も一括で書き換える
-function updateEvent_(oldName, data) {
+function deletePoster_(id) {
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
-    const newName = validateMasterName_(data && data.name, 'イベント名');
-    const sh = getEventSheet_();
+    const sh = getPosterSheet_();
     const lastRow = sh.getLastRow();
-    if (lastRow < 2) throw new Error('イベントが見つかりません: ' + oldName);
-    const names = sh.getRange(2, 1, lastRow - 1, 1).getValues();
-    const idx = names.findIndex(r => String(r[0]).trim() === String(oldName).trim());
-    if (idx < 0) throw new Error('イベントが見つかりません: ' + oldName);
-    if (newName !== oldName && names.some(r => String(r[0]).trim() === newName)) {
-      throw new Error('同じ名前のイベントが既にあります');
-    }
-    const rowNum = idx + 2;
-    EVENT_TEXT_COLS.forEach(col => sh.getRange(rowNum, col, 1, 1).setNumberFormat('@'));
-    sh.getRange(rowNum, 1, 1, EVENT_HEADERS.length).setValues([[
-      newName, data.period || '', numOrZero_(data.order), data.memo || ''
-    ]]);
-
-    let renamed = 0;
-    if (newName !== oldName) renamed = cascadeRename_(IDEA_COL.event, oldName, newName);
-    return { events: getEvents_(), renamed: renamed };
+    if (lastRow < 2) throw new Error('ポスターが見つかりません: ' + id);
+    const rows = sh.getRange(2, 1, lastRow - 1, POSTER_HEADERS.length).getValues();
+    const idx = rows.findIndex(r => String(r[0]).trim() === String(id).trim());
+    if (idx < 0) throw new Error('ポスターが見つかりません: ' + id);
+    const store = String(rows[idx][1]).trim();
+    const fileId = String(rows[idx][3]).trim();
+    sh.deleteRow(idx + 2);
+    if (fileId) { try { DriveApp.getFileById(fileId).setTrashed(true); } catch (e) {} }
+    return getPosters_(store);
   } finally {
     lock.releaseLock();
   }
 }
 
-function deleteEvent_(name) {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(15000);
-  try {
-    const inUse = countIdeasByColumn_(IDEA_COL.event, name);
-    if (inUse > 0) {
-      throw new Error('「' + name + '」は' + inUse + '件のアイデアで使われているため削除できません。'
-        + '先にそのアイデアのイベントを変更してください');
-    }
-    const sh = getEventSheet_();
-    const lastRow = sh.getLastRow();
-    if (lastRow >= 2) {
-      const names = sh.getRange(2, 1, lastRow - 1, 1).getValues();
-      const idx = names.findIndex(r => String(r[0]).trim() === String(name).trim());
-      if (idx >= 0) sh.deleteRow(idx + 2);
-    }
-    return getEvents_();
-  } finally {
-    lock.releaseLock();
+function generateNextPosterId_(sh) {
+  const lastRow = sh.getLastRow();
+  let max = 0;
+  if (lastRow >= 2) {
+    sh.getRange(2, 1, lastRow - 1, 1).getValues().forEach(r => {
+      const m = String(r[0]).match(/^P(\d+)$/);
+      if (m) max = Math.max(max, Number(m[1]));
+    });
   }
+  return 'P' + String(max + 1).padStart(4, '0');
+}
+
+function getPosterFolder_() {
+  const it = DriveApp.getFoldersByName(POSTER_FOLDER_NAME);
+  if (it.hasNext()) return it.next();
+  return DriveApp.createFolder(POSTER_FOLDER_NAME);
 }
 
 // ============================================================
@@ -1356,17 +1361,6 @@ function reorderStores_(names) {
   }
 }
 
-function reorderEvents_(names) {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(15000);
-  try {
-    reorderMasterRows_(getEventSheet_(), EVENT_HEADERS, EVENT_TEXT_COLS, names, 3);
-    return getEvents_();
-  } finally {
-    lock.releaseLock();
-  }
-}
-
 function reorderCategories_(names) {
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
@@ -1434,18 +1428,24 @@ function resolvePhoto_(newValue, oldUrl) {
 }
 
 function uploadPhoto_(dataUrl) {
-  const m = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.*)$/);
+  const fileId = uploadToFolder_(dataUrl, getPhotoFolder_(), 'idea_');
+  // uc?export=view形式はGoogle側のウイルススキャン確認画面にリダイレクトされ<img>で表示できないことがあるため、
+  // サムネイル配信エンドポイントを使う
+  return 'https://drive.google.com/thumbnail?id=' + fileId + '&sz=w1000';
+}
+
+// data:image/...;base64,... をDriveの指定フォルダに保存し、ファイルIDを返す。
+// 写真とポスターで共通に使う（呼ぶ側が返り値のIDからURLを組み立てる）。
+function uploadToFolder_(dataUrl, folder, prefix) {
+  const m = String(dataUrl).match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.*)$/);
   if (!m) throw new Error('不正な画像データです');
   const contentType = m[1];
   const bytes = Utilities.base64Decode(m[2]);
   const ext = contentType.split('/')[1] || 'jpg';
-  const blob = Utilities.newBlob(bytes, contentType, 'idea_' + new Date().getTime() + '.' + ext);
-  const folder = getPhotoFolder_();
+  const blob = Utilities.newBlob(bytes, contentType, prefix + new Date().getTime() + '.' + ext);
   const file = folder.createFile(blob);
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-  // uc?export=view形式はGoogle側のウイルススキャン確認画面にリダイレクトされ<img>で表示できないことがあるため、
-  // サムネイル配信エンドポイントを使う
-  return 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w1000';
+  return file.getId();
 }
 
 function getPhotoFolder_() {

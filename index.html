@@ -133,10 +133,8 @@ img{max-width:100%;display:block}
 .hdr-pres{font-size:.68rem;background:#fbbf24;color:#78350f;border-radius:999px;padding:.14rem .55rem;font-weight:700;white-space:nowrap}
 
 .pill{display:inline-block;padding:.16rem .5rem;border-radius:999px;font-size:.68rem;font-weight:700;white-space:nowrap}
-.pill-提案中{background:#eff6ff;color:#1d4ed8}
-.pill-検討中{background:var(--warn-bg);color:var(--warn)}
+.pill-アイデア{background:#eff6ff;color:#1d4ed8}
 .pill-採用{background:var(--brand-light);color:var(--brand-dark)}
-.pill-見送り{background:#f3f4f6;color:var(--ink-faint)}
 .badge{display:inline-block;padding:.16rem .5rem;border-radius:6px;font-size:.68rem;font-weight:700;background:var(--brand-tint);color:var(--brand-dark);white-space:nowrap}
 .badge-ev{background:#fef3c7;color:#92400e}
 .badge-store{background:#eef2ff;color:#4338ca}
@@ -190,6 +188,7 @@ img{max-width:100%;display:block}
 
 /* 写真 */
 .photos{display:grid;grid-template-columns:1fr 1fr;gap:.7rem}
+.photos-1{grid-template-columns:1fr;max-width:20rem}
 .ph{position:relative;aspect-ratio:4/3;border:2px dashed var(--line);border-radius:10px;overflow:hidden;background:var(--bg);
   display:flex;align-items:center;justify-content:center;color:var(--ink-faint);font-size:.75rem;text-align:center;padding:.5rem}
 .ph img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
@@ -239,7 +238,22 @@ img{max-width:100%;display:block}
 .dtable td{padding:.4rem .5rem;border-bottom:1px solid var(--line)}
 .dtable .r{text-align:right;white-space:nowrap}
 .dphotos{display:grid;grid-template-columns:1fr 1fr;gap:.6rem}
+.dphotos-1{grid-template-columns:1fr;max-width:22rem}
 .dphotos img{border-radius:10px;aspect-ratio:4/3;object-fit:cover;width:100%}
+
+/* ===== ポスター ===== */
+.pgrid{display:grid;grid-template-columns:1fr;gap:.7rem}
+@media(min-width:640px){.pgrid{grid-template-columns:repeat(2,1fr)}}
+@media(min-width:1024px){.pgrid{grid-template-columns:repeat(3,1fr)}}
+.pcard{background:#fff;border-radius:12px;box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column}
+.pcard-img{aspect-ratio:4/3;background:var(--bg);overflow:hidden}
+.pcard-img img{width:100%;height:100%;object-fit:cover}
+.pcard-body{padding:.6rem .7rem;display:flex;flex-direction:column;gap:.35rem}
+.pcard-title{font-size:.88rem;font-weight:700;line-height:1.35}
+.pcard-meta{font-size:.68rem;color:var(--ink-faint)}
+.pcard-actions{display:flex;gap:.4rem;margin-top:.15rem}
+.pcard-actions .btn{flex:1}
+#posterStoreTabs button{flex:0 0 auto}
 
 /* ===== マスタ一覧 ===== */
 .mlist{display:grid;gap:.4rem}
@@ -305,7 +319,7 @@ img{max-width:100%;display:block}
   <div class="nav-in">
     <button class="nav-btn on" data-view="list">一覧</button>
     <button class="nav-btn" data-view="form">新規登録</button>
-    <button class="nav-btn" data-view="event">イベント</button>
+    <button class="nav-btn" data-view="poster">ポスター</button>
     <button class="nav-btn" data-view="master">マスタ</button>
   </div>
 </nav>
@@ -314,20 +328,13 @@ img{max-width:100%;display:block}
 
 <!-- ========== 一覧 ========== -->
 <section id="view-list">
-  <!-- 切替バー：このアプリの中心機能 -->
   <div class="axis">
-    <!-- 部門タブ。ステータス（開発段階）とは別の軸で「どちらの事業の商品か」を切り替える -->
-    <div class="seg" id="segDept" style="margin-bottom:.5rem">
+    <!-- 部門タブ。ステータス（アイデア／採用）とは別の軸で「どちらの事業の商品か」を切り替える -->
+    <div class="seg" id="segDept">
       <button data-dept="" class="on">すべて</button>
       <button data-dept="店舗部門">店舗部門</button>
       <button data-dept="ぎゅう丸ラボ">ぎゅう丸ラボ</button>
     </div>
-    <div class="seg" id="segAxis">
-      <button data-mode="all" class="on">すべて</button>
-      <button data-mode="month">採用月で見る</button>
-      <button data-mode="event">イベントで見る</button>
-    </div>
-    <div id="axisChips" class="chips hidden"></div>
 
     <div class="filters">
       <button id="filtToggle" class="filt-toggle">▸ 絞り込み <span id="filtCount"></span></button>
@@ -381,13 +388,9 @@ img{max-width:100%;display:block}
   </div>
 
   <div class="panel">
-    <h3>分類・採用</h3>
-    <div class="fgrid c3">
-      <div class="f"><label>ステータス</label><select id="i-status"></select></div>
-      <div class="f"><label>採用月</label><select id="i-month"></select>
-        <div class="hint">「採用」にしたら必ず設定してください</div></div>
-      <div class="f"><label>イベント</label><select id="i-event"></select></div>
-    </div>
+    <h3>分類・ステータス</h3>
+    <div class="f"><label>ステータス</label><div class="picks" id="i-status"></div>
+      <div class="hint">「採用」＝商品化が決まったもの、「アイデア」＝検討中のもの</div></div>
     <div class="f" style="margin-top:.7rem"><label>カテゴリ</label><div class="picks" id="i-cats"></div></div>
     <div class="f" style="margin-top:.7rem">
       <label>タグ</label>
@@ -450,11 +453,9 @@ img{max-width:100%;display:block}
 
   <div class="panel">
     <h3>写真・メモ</h3>
-    <div class="photos">
+    <div class="photos photos-1">
       <label class="ph" id="ph1"><span>完成イメージ<br>タップして選択</span>
         <input type="file" accept="image/*" class="sr" id="file1"></label>
-      <label class="ph" id="ph2"><span>工程・盛り付け<br>タップして選択</span>
-        <input type="file" accept="image/*" class="sr" id="file2"></label>
     </div>
     <div class="f" style="margin-top:.8rem"><label>検討メモ</label>
       <textarea id="i-memo" rows="3" placeholder="試作の感想、会議での指摘、原価を下げる案など"></textarea></div>
@@ -466,18 +467,19 @@ img{max-width:100%;display:block}
   </div>
 </section>
 
-<!-- ========== イベント ========== -->
-<section id="view-event" class="hidden">
+<!-- ========== ポスター ========== -->
+<section id="view-poster" class="hidden">
   <div class="panel">
-    <h3>イベント一覧</h3>
+    <h3>店舗ごとのポスター</h3>
     <p style="font-size:.75rem;color:var(--ink-faint);margin-bottom:.7rem">
-      行をタップすると、そのイベントの採用案だけを一覧で表示します。</p>
-    <div id="eventList" class="mlist"></div>
-    <div class="addrow">
-      <input id="ev-name" placeholder="イベント名（例：秋の物産展）">
-      <input id="ev-period" placeholder="時期（例：10月）" style="max-width:9rem">
-      <button id="ev-add" class="btn btn-primary btn-sm">追加</button>
+      テーブルに置くポスターやメニュー表の画像を店舗ごとに保管できます。画像はダウンロードできます。</p>
+    <div class="seg" id="posterStoreTabs"></div>
+    <div style="margin-top:.7rem">
+      <label class="ph" id="posterDrop" style="aspect-ratio:auto;min-height:5rem;padding:1rem">
+        <span>＋ ポスター画像を追加<br>タップして選択</span>
+        <input type="file" accept="image/*" class="sr" id="posterFile"></label>
     </div>
+    <div id="posterList" class="pgrid" style="margin-top:.8rem"></div>
   </div>
 </section>
 
@@ -552,11 +554,6 @@ img{max-width:100%;display:block}
     <div class="mhead"><h2>ステータスを変更</h2><button class="x" data-close="statusM">✕</button></div>
     <div class="mbody">
       <div class="f"><label>ステータス</label><div class="picks" id="s-status"></div></div>
-      <div id="s-adopt" class="hidden">
-        <div class="f" style="margin-top:.8rem"><label>採用月<span class="req">*</span></label><select id="s-month"></select></div>
-        <div class="f" style="margin-top:.7rem"><label>イベント</label><select id="s-event"></select>
-          <div class="hint">催事に紐づかない場合は空のままでOK</div></div>
-      </div>
     </div>
     <div class="mfoot">
       <button class="btn btn-ghost" data-close="statusM">キャンセル</button>
@@ -615,16 +612,18 @@ var PRES = '';                     // 社長モードの合い言葉。空なら
 // 代償は「同じ人がPCとスマホで見ると片方でまた未読に見える」ことだが、見逃す方向には壊れない。
 var READ = {};
 var D = {  // サーバーから取得したマスタ類
-  ideas:[], stores:[], events:[], categories:[], tags:[],
+  ideas:[], stores:[], categories:[], tags:[],
   deptOptions:['店舗部門','ぎゅう丸ラボ'],
-  statusOptions:['提案中','検討中','採用','見送り'], unitOptions:[], yieldUnitOptions:[],
-  allergenOptions:[], storageOptions:[], monthOptions:[], today:'', thisMonth:''
+  statusOptions:['アイデア','採用'], unitOptions:[], yieldUnitOptions:[],
+  allergenOptions:[], storageOptions:[], today:''
 };
-var F = { mode:'all', month:'', event:'', status:'', store:'', cats:[], tags:[], q:'', group:'none', dept:'' };
-var FORM = { id:null, materials:[], cats:[], tags:[], allergens:[], storage:'', photo1:'', photo2:'',
-             updatedAt:'', dept:'店舗部門', deptTouched:false };
+var F = { status:'', store:'', cats:[], tags:[], q:'', group:'none', dept:'' };
+var FORM = { id:null, materials:[], status:'アイデア', cats:[], tags:[], allergens:[], storage:'',
+             photo1:'', photo2:'', updatedAt:'', dept:'店舗部門', deptTouched:false };
 var DETAIL = null;        // 現在詳細を開いているアイデア
 var DETAIL_MATS = [];     // 詳細で表示中の材料（コメント投稿後の再描画に使う）
+var POSTER_STORE = '';    // ポスター画面で選択中の店舗
+var POSTERS = [];         // 選択中店舗のポスター一覧
 
 // ============================================================
 // サーバー通信
@@ -740,12 +739,13 @@ function calcCost(materials, yieldQty, price){
 // 画面切替
 // ============================================================
 function switchView(name){
-  ['list','form','event','master'].forEach(function(v){
+  ['list','form','poster','master'].forEach(function(v){
     q('view-' + v).classList.toggle('hidden', v !== name);
   });
   document.querySelectorAll('.nav-btn').forEach(function(b){
     b.classList.toggle('on', b.dataset.view === name);
   });
+  if(name === 'poster') openPoster();
   window.scrollTo(0, 0);
 }
 document.querySelectorAll('.nav-btn').forEach(function(b){
@@ -768,11 +768,9 @@ document.querySelectorAll('[data-close]').forEach(function(b){
 function applyInitialData(data){
   D = Object.assign(D, data || {});
   restoreFilter();
-  renderAxisChips();
   renderFilterPicks();
   renderStoreList();
   renderCatList();
-  renderEventList();
   renderTagList();
   renderPresPanel();
   fillFormSelects();
@@ -784,9 +782,8 @@ function reload(){
 }
 
 // ============================================================
-// 切替バー（採用月／イベント）
-// ============================================================
 // 部門タブ（すべて／店舗部門／ぎゅう丸ラボ）
+// ============================================================
 on(q('segDept'), 'click', function(e){
   var b = e.target.closest('button');
   if(!b) return;
@@ -800,69 +797,6 @@ function syncSegDept(){
     x.classList.toggle('on', x.dataset.dept === (F.dept || ''));
   });
 }
-
-on(q('segAxis'), 'click', function(e){
-  var b = e.target.closest('button');
-  if(!b) return;
-  F.mode = b.dataset.mode;
-  // 軸を切り替えたら、もう片方の軸の選択は消す（両方効いていると分かりにくい）
-  if(F.mode !== 'month') F.month = '';
-  if(F.mode !== 'event') F.event = '';
-  document.querySelectorAll('#segAxis button').forEach(function(x){
-    x.classList.toggle('on', x.dataset.mode === F.mode);
-  });
-  renderAxisChips();
-  saveFilter();
-  render();
-});
-
-function renderAxisChips(){
-  var box = q('axisChips');
-  if(F.mode === 'all'){ box.classList.add('hidden'); box.innerHTML = ''; return; }
-  box.classList.remove('hidden');
-
-  var html = '';
-  if(F.mode === 'month'){
-    // 「採用」になっている案の月だけを数える（提案中の案は採用月を持たない）
-    var counts = {};
-    D.ideas.forEach(function(i){ if(i.month) counts[i.month] = (counts[i.month]||0) + 1; });
-    html += chipHtml('', 'すべての月', null, F.month === '');
-    (D.monthOptions||[]).forEach(function(m){
-      html += chipHtml(m, monthLabel(m), counts[m]||0, F.month === m);
-    });
-  }else{
-    var ec = {};
-    D.ideas.forEach(function(i){ if(i.event) ec[i.event] = (ec[i.event]||0) + 1; });
-    html += chipHtml('', 'すべてのイベント', null, F.event === '');
-    (D.events||[]).forEach(function(ev){
-      html += chipHtml(ev.name, ev.name, ec[ev.name]||0, F.event === ev.name);
-    });
-  }
-  box.innerHTML = html;
-
-  // 採用月は「未来9ヶ月ぶん」も先に出しているため、そのままだと中身が0件の未来月が
-  // 左端に並び、実際にデータのある月まで横スクロールしないと辿り着けない。
-  // 選択中（未選択なら今月）のチップを表示範囲に入れておく。
-  var target = box.querySelector('.chip.on');
-  if(F.mode === 'month' && (!target || !target.dataset.val)){
-    target = box.querySelector('.chip[data-val="' + D.thisMonth + '"]') || target;
-  }
-  if(target && target.dataset.val){
-    box.scrollLeft = Math.max(0, target.offsetLeft - box.offsetLeft - 60);
-  }
-}
-function chipHtml(val, label, count, on){
-  return '<button class="chip' + (on ? ' on' : '') + '" data-val="' + esc(val) + '">' +
-    esc(label) + (count === null ? '' : '<span class="n">' + count + '</span>') + '</button>';
-}
-on(q('axisChips'), 'click', function(e){
-  var b = e.target.closest('.chip');
-  if(!b) return;
-  if(F.mode === 'month') F.month = b.dataset.val; else F.event = b.dataset.val;
-  renderAxisChips();
-  saveFilter();
-  render();
-});
 
 // ============================================================
 // 絞り込み
@@ -933,9 +867,6 @@ function restoreFilter(){
       F.cats = F.cats || []; F.tags = F.tags || [];
     }
   }catch(e){}
-  document.querySelectorAll('#segAxis button').forEach(function(x){
-    x.classList.toggle('on', x.dataset.mode === F.mode);
-  });
   syncSegDept();
   q('fQ').value = F.q || '';
 }
@@ -946,8 +877,6 @@ function restoreFilter(){
 function filtered(){
   return D.ideas.filter(function(i){
     if(F.dept && i.dept !== F.dept) return false;
-    if(F.mode === 'month' && F.month && i.month !== F.month) return false;
-    if(F.mode === 'event' && F.event && i.event !== F.event) return false;
     if(F.status && i.status !== F.status) return false;
     if(F.store && i.store !== F.store) return false;
     if(F.cats.length && !F.cats.every(function(c){ return (i.categories||[]).indexOf(c) >= 0; })) return false;
@@ -959,12 +888,11 @@ function filtered(){
     }
     return true;
   }).sort(function(a, b){
-    // 未読（社長コメントあり）を最優先で先頭へ。
-    // その後は 採用月が新しい順 → 提案日が新しい順 → ID降順
+    // 未読（社長コメントあり）を最優先で先頭へ。その後は更新日時が新しい順 → ID降順
     var ua = isUnread(a) ? 1 : 0, ub = isUnread(b) ? 1 : 0;
     if(ua !== ub) return ub - ua;
-    if(a.month !== b.month) return a.month < b.month ? 1 : -1;
-    if(a.date !== b.date) return a.date < b.date ? 1 : -1;
+    var la = latestAt(a), lb = latestAt(b);
+    if(la !== lb) return la < lb ? 1 : -1;
     return a.id < b.id ? 1 : -1;
   });
 }
@@ -1024,8 +952,7 @@ function renderStats(rows){
     '<div class="stat"><b' + (unread ? ' style="color:var(--danger)"' : '') + '>' + unread +
       '</b><span>未読</span></div>' +
     '<div class="stat"><b>' + rows.length + '</b><span>表示中</span></div>' +
-    '<div class="stat"><b>' + count('提案中') + '</b><span>提案中</span></div>' +
-    '<div class="stat"><b>' + count('検討中') + '</b><span>検討中</span></div>' +
+    '<div class="stat"><b>' + count('アイデア') + '</b><span>アイデア</span></div>' +
     '<div class="stat"><b>' + count('採用') + '</b><span>採用</span></div>';
 }
 
@@ -1033,8 +960,6 @@ function cardHtml(i){
   var img = photoUrl(i.photo1);
   var unread = isUnread(i);
   var badges = '';
-  if(i.month) badges += '<span class="badge">' + esc(monthLabel(i.month)) + '採用</span>';
-  if(i.event) badges += '<span class="badge badge-ev">' + esc(i.event) + '</span>';
   if(i.store) badges += '<span class="badge badge-store">' + esc(i.store) + '</span>';
   // 部門バッジは「すべて」表示のときだけ（部門タブで絞っている間は全カード同じになるので邪魔）
   if(!F.dept && i.dept) badges += '<span class="badge">' + esc(i.dept) + '</span>';
@@ -1097,17 +1022,12 @@ function detailHtml(i, materials, comments){
   comments = comments || [];
 
   var badges = '<span class="pill pill-' + esc(i.status) + '">' + esc(i.status) + '</span>';
-  if(i.month) badges += ' <span class="badge">' + esc(monthLabel(i.month)) + '採用</span>';
-  if(i.event) badges += ' <span class="badge badge-ev">' + esc(i.event) + '</span>';
   if(i.store) badges += ' <span class="badge badge-store">' + esc(i.store) + '</span>';
   if(i.dept) badges += ' <span class="badge">' + esc(i.dept) + '</span>';
   h += '<div class="sec" style="display:flex;flex-wrap:wrap;gap:.35rem;align-items:center">' + badges + '</div>';
 
-  var ph = [i.photo1, i.photo2].filter(Boolean);
-  if(ph.length){
-    h += '<div class="sec"><div class="dphotos">' + ph.map(function(p){
-      return '<img src="' + esc(photoUrl(p)) + '" alt="">';
-    }).join('') + '</div></div>';
+  if(i.photo1){
+    h += '<div class="sec"><div class="dphotos dphotos-1"><img src="' + esc(photoUrl(i.photo1)) + '" alt=""></div></div>';
   }
 
   var meta = '';
@@ -1279,8 +1199,7 @@ function submitComment(kind, textId, nameId, btn){
 on(q('d-edit'), 'click', function(){ if(DETAIL){ q('detail').classList.add('hidden'); openForm(DETAIL.id); } });
 on(q('d-del'), 'click', function(){
   if(!DETAIL) return;
-  if(!confirm('「' + DETAIL.name + '」を削除します。\n\n材料・写真もすべて消え、元に戻せません。\n' +
-              '記録を残したい場合は削除せず、ステータスを「見送り」に変えてください。\n\n本当に削除しますか？')) return;
+  if(!confirm('「' + DETAIL.name + '」を削除します。\n\n材料・写真もすべて消え、元に戻せません。\n\n本当に削除しますか？')) return;
   var id = DETAIL.id;
   gsRun('deleteIdea', id).then(function(){
     q('detail').classList.add('hidden');
@@ -1299,9 +1218,6 @@ on(q('d-status'), 'click', function(){
   q('s-status').innerHTML = D.statusOptions.map(function(s){
     return '<button class="pick' + (s === S_PICK ? ' on' : '') + '" data-val="' + esc(s) + '">' + esc(s) + '</button>';
   }).join('');
-  fillSelect(q('s-month'), D.monthOptions, DETAIL.month || D.thisMonth, '（未設定）', monthLabel);
-  fillSelect(q('s-event'), (D.events||[]).map(function(e){ return e.name; }), DETAIL.event, '（なし）');
-  q('s-adopt').classList.toggle('hidden', S_PICK !== '採用');
   q('statusM').classList.remove('hidden');
 });
 on(q('s-status'), 'click', function(e){
@@ -1309,18 +1225,12 @@ on(q('s-status'), 'click', function(e){
   if(!b) return;
   S_PICK = b.dataset.val;
   document.querySelectorAll('#s-status .pick').forEach(function(x){ x.classList.toggle('on', x.dataset.val === S_PICK); });
-  // 「採用」を選んだときだけ採用月・イベントの入力を出す。
-  // これで「何月に採用した案か」が必ず埋まる
-  q('s-adopt').classList.toggle('hidden', S_PICK !== '採用');
 });
 on(q('s-save'), 'click', function(){
   if(!DETAIL) return;
-  var month = S_PICK === '採用' ? q('s-month').value : '';
-  var ev    = S_PICK === '採用' ? q('s-event').value : '';
-  if(S_PICK === '採用' && !month){ toast('採用月を選んでください', true); return; }
   var btn = q('s-save');
   btn.disabled = true; btn.textContent = '変更中…';
-  gsRun('updateIdeaStatus', DETAIL.id, { status:S_PICK, month:month, event:ev, updatedBy:ME })
+  gsRun('updateIdeaStatus', DETAIL.id, { status:S_PICK, updatedBy:ME })
     .then(function(){
       q('statusM').classList.add('hidden');
       q('detail').classList.add('hidden');
@@ -1346,15 +1256,13 @@ function fillSelect(sel, values, current, blankLabel, labelFn){
 
 function fillFormSelects(){
   fillSelect(q('i-store'), (D.stores||[]).map(function(s){ return s.name; }), '', '（選択してください）');
-  fillSelect(q('i-status'), D.statusOptions, '提案中', null);
-  fillSelect(q('i-month'), D.monthOptions, '', '（未設定）', monthLabel);
-  fillSelect(q('i-event'), (D.events||[]).map(function(e){ return e.name; }), '', '（なし）');
   fillSelect(q('i-yieldUnit'), D.yieldUnitOptions, '食', null);
 }
 
 function openForm(id){
   var idea = id ? D.ideas.filter(function(i){ return String(i.id) === String(id); })[0] : null;
-  FORM = { id:id||null, materials:[], cats:[], tags:[], allergens:[], storage:'', photo1:'', photo2:'',
+  FORM = { id:id||null, materials:[], status: idea ? (idea.status || 'アイデア') : 'アイデア',
+           cats:[], tags:[], allergens:[], storage:'', photo1:'', photo2:'',
            updatedAt:'', dept: idea ? (idea.dept || '店舗部門') : '店舗部門',
            deptTouched: !!idea };   // 既存の案は登録済みの部門を尊重し、店舗変更で勝手に書き換えない
   fillFormSelects();
@@ -1363,9 +1271,6 @@ function openForm(id){
   q('i-name').value = idea ? idea.name : '';
   q('i-catch').value = idea ? idea.catch : '';
   q('i-store').value = idea ? idea.store : '';
-  q('i-status').value = idea ? idea.status : '提案中';
-  q('i-month').value = idea ? idea.month : '';
-  q('i-event').value = idea ? idea.event : '';
   q('i-yieldQty').value = idea && idea.yieldQty ? idea.yieldQty : '';
   q('i-yieldUnit').value = idea && idea.yieldUnit ? idea.yieldUnit : '食';
   q('i-price').value = idea && idea.price ? idea.price : '';
@@ -1419,6 +1324,10 @@ function openForm(id){
 function blankMat(){ return { name:'', qty:'', unit:'g', unitPrice:'' }; }
 
 function renderPickGroups(){
+  q('i-status').innerHTML = (D.statusOptions||[]).map(function(s){
+    return '<button class="pick' + (FORM.status === s ? ' on' : '') + '" data-val="' + esc(s) + '">' + esc(s) + '</button>';
+  }).join('');
+
   q('i-dept').innerHTML = (D.deptOptions||[]).map(function(d){
     return '<button class="pick' + (FORM.dept === d ? ' on' : '') + '" data-val="' + esc(d) + '">' + esc(d) + '</button>';
   }).join('');
@@ -1447,6 +1356,8 @@ function allergenPick(a){
   return '<button class="pick pick-sm' + (FORM.allergens.indexOf(a) >= 0 ? ' on' : '') +
     '" data-val="' + esc(a) + '">' + esc(a) + '</button>';
 }
+on(q('i-status'), 'click', function(e){ var b = e.target.closest('.pick'); if(!b) return;
+  FORM.status = b.dataset.val; renderPickGroups(); });
 on(q('i-dept'), 'click', function(e){ var b = e.target.closest('.pick'); if(!b) return;
   FORM.dept = b.dataset.val; FORM.deptTouched = true; renderPickGroups(); });
 // 提案店舗に「ぎゅう丸ラボ」を選んだら部門も自動で合わせる
@@ -1529,40 +1440,35 @@ function recalc(){
   r.className = rateClass(c.costRate);
 }
 
-// ---- 写真 ----
+// ---- 写真（完成イメージ1枚。工程写真は廃止）----
 function renderPhotos(){
-  [['ph1','photo1','完成イメージ'], ['ph2','photo2','工程・盛り付け']].forEach(function(p){
-    var el = q(p[0]);
-    var url = FORM[p[1]];
-    var input = el.querySelector('input');
-    el.querySelectorAll('img,.ph-x,span').forEach(function(n){ n.remove(); });
-    if(url){
-      var img = document.createElement('img');
-      img.src = photoUrl(url);
-      var x = document.createElement('button');
-      x.type = 'button'; x.className = 'ph-x'; x.textContent = '✕';
-      x.dataset.clear = p[1];
-      el.appendChild(img); el.appendChild(x);
-    }else{
-      var s = document.createElement('span');
-      s.innerHTML = p[2] + '<br>タップして選択';
-      el.appendChild(s);
-    }
-    el.appendChild(input);
-  });
+  var el = q('ph1');
+  var url = FORM.photo1;
+  var input = el.querySelector('input');
+  el.querySelectorAll('img,.ph-x,span').forEach(function(n){ n.remove(); });
+  if(url){
+    var img = document.createElement('img');
+    img.src = photoUrl(url);
+    var x = document.createElement('button');
+    x.type = 'button'; x.className = 'ph-x'; x.textContent = '✕';
+    x.dataset.clear = 'photo1';
+    el.appendChild(img); el.appendChild(x);
+  }else{
+    var s = document.createElement('span');
+    s.innerHTML = '完成イメージ<br>タップして選択';
+    el.appendChild(s);
+  }
+  el.appendChild(input);
 }
-['ph1','ph2'].forEach(function(id){
-  on(q(id), 'click', function(e){
-    var x = e.target.closest('.ph-x');
-    if(x){
-      e.preventDefault(); e.stopPropagation();
-      FORM[x.dataset.clear] = '';
-      renderPhotos();
-    }
-  });
+on(q('ph1'), 'click', function(e){
+  var x = e.target.closest('.ph-x');
+  if(x){
+    e.preventDefault(); e.stopPropagation();
+    FORM.photo1 = '';
+    renderPhotos();
+  }
 });
 on(q('file1'), 'change', function(e){ pickPhoto(e, 'photo1'); });
-on(q('file2'), 'change', function(e){ pickPhoto(e, 'photo2'); });
 function pickPhoto(e, key){
   var f = e.target.files && e.target.files[0];
   if(!f) return;
@@ -1608,9 +1514,7 @@ on(q('formSave'), 'click', function(){
     catch: q('i-catch').value.trim(),
     store: q('i-store').value,
     dept: FORM.dept,
-    status: q('i-status').value,
-    month: q('i-month').value,
-    event: q('i-event').value,
+    status: FORM.status,
     categories: FORM.cats,
     tags: FORM.tags,
     yieldQty: q('i-yieldQty').value,
@@ -1623,6 +1527,8 @@ on(q('formSave'), 'click', function(){
     storage: storage,
     bestBefore: q('i-bestBefore').value.trim(),
     memo: q('i-memo').value,
+    // photo1 は完成イメージ。photo2（工程写真）は画面から廃止したが、
+    // 既存データを消さないよう FORM に読み込んだ値をそのまま送り返す
     photo1: FORM.photo1, photo2: FORM.photo2,
     materials: FORM.materials.filter(function(m){ return String(m.name||'').trim() !== ''; }),
     updatedBy: ME,
@@ -1631,14 +1537,10 @@ on(q('formSave'), 'click', function(){
 
   if(!payload.name){ toast('商品名を入力してください', true); q('i-name').focus(); return; }
   if(!payload.store){ toast('提案店舗を選んでください', true); q('i-store').focus(); return; }
-  if(payload.status === '採用' && !payload.month){
-    toast('「採用」にするときは採用月を選んでください', true); q('i-month').focus(); return;
-  }
 
   var btn = q('formSave');
   btn.disabled = true;
-  btn.textContent = payload.photo1.indexOf('data:') === 0 || payload.photo2.indexOf('data:') === 0
-    ? '写真を送信中…' : '保存中…';
+  btn.textContent = payload.photo1.indexOf('data:') === 0 ? '写真を送信中…' : '保存中…';
 
   var call = FORM.id ? gsRun('updateIdea', FORM.id, payload) : gsRun('addIdea', payload);
   call.then(function(){
@@ -1691,7 +1593,7 @@ function reorderMaster(action, list, name, dir){
   var sorted = names.map(function(n){ return byName[n]; });
   list.length = 0;
   sorted.forEach(function(x){ list.push(x); });
-  renderStoreList(); renderCatList(); renderEventList();
+  renderStoreList(); renderCatList();
   if(F.group !== 'none') render();   // 一覧をグループ表示中なら見出し順も追従させる
 
   // サーバーへは1件ずつ順番に送る
@@ -1704,54 +1606,6 @@ function reorderMaster(action, list, name, dir){
       if(reorderPending === 0) return reload();   // 全部さばけたら1回だけ照合
     });
 }
-
-function renderEventList(){
-  var counts = {};
-  D.ideas.forEach(function(i){ if(i.event) counts[i.event] = (counts[i.event]||0) + 1; });
-  var list = D.events || [];
-  q('eventList').innerHTML = list.map(function(e, idx){
-    return '<div class="mrow" data-name="' + esc(e.name) + '">' +
-      ordHtml(idx, list.length) +
-      '<div class="nm">' + esc(e.name) +
-        (e.period ? ' <span class="sub">（' + esc(e.period) + '）</span>' : '') +
-        '<span class="sub"> ・ ' + (counts[e.name]||0) + '件</span></div>' +
-      '<button class="btn btn-line btn-sm" data-act="view">見る</button>' +
-      '<button class="btn btn-line btn-sm" data-act="rename">改名</button>' +
-      '<button class="btn btn-danger btn-sm" data-act="del">削除</button></div>';
-  }).join('') || '<div class="hint">イベントが登録されていません</div>';
-}
-on(q('eventList'), 'click', function(e){
-  var b = e.target.closest('button');
-  if(!b) return;
-  var name = b.closest('.mrow').dataset.name;
-  if(b.dataset.act === 'up' || b.dataset.act === 'down'){
-    reorderMaster('reorderEvents', D.events, name, b.dataset.act === 'up' ? -1 : 1);
-  }else if(b.dataset.act === 'view'){
-    F.mode = 'event'; F.event = name;
-    document.querySelectorAll('#segAxis button').forEach(function(x){ x.classList.toggle('on', x.dataset.mode === 'event'); });
-    renderAxisChips(); saveFilter(); render(); switchView('list');
-  }else if(b.dataset.act === 'rename'){
-    var nn = prompt('新しいイベント名', name);
-    if(nn == null) return;
-    var ev = (D.events||[]).filter(function(x){ return x.name === name; })[0] || {};
-    gsRun('updateEvent', name, { name:nn, period:ev.period, order:ev.order, memo:ev.memo })
-      .then(function(r){
-        toast(r.renamed ? '改名しました（' + r.renamed + '件のアイデアも更新）' : '改名しました');
-        return reload();
-      }).catch(function(err){ toast(errMsg(err), true); });
-  }else if(b.dataset.act === 'del'){
-    if(!confirm('イベント「' + name + '」を削除しますか？')) return;
-    gsRun('deleteEvent', name).then(function(){ toast('削除しました'); return reload(); })
-      .catch(function(err){ toast(errMsg(err), true); });
-  }
-});
-on(q('ev-add'), 'click', function(){
-  var name = q('ev-name').value.trim();
-  if(!name){ toast('イベント名を入力してください', true); return; }
-  gsRun('addEvent', { name:name, period:q('ev-period').value.trim(), order:(D.events||[]).length + 1, memo:'' })
-    .then(function(){ q('ev-name').value = ''; q('ev-period').value = ''; toast('追加しました'); return reload(); })
-    .catch(function(e){ toast(errMsg(e), true); });
-});
 
 function renderStoreList(){
   var counts = {};
@@ -1874,6 +1728,93 @@ on(q('tg-add'), 'click', function(){
   gsRun('addTag', name)
     .then(function(){ q('tg-name').value = ''; toast('追加しました'); return reload(); })
     .catch(function(e){ toast(errMsg(e), true); });
+});
+
+// ============================================================
+// ポスター（店舗ごとに保管・ダウンロード）
+// ============================================================
+// ポスター画面を開いたとき（店舗タブを作り、選択店舗のポスターを読み込む）
+function openPoster(){
+  var stores = (D.stores || []).map(function(s){ return s.name; });
+  if(!POSTER_STORE || stores.indexOf(POSTER_STORE) < 0) POSTER_STORE = stores[0] || '';
+  q('posterStoreTabs').innerHTML = stores.map(function(s){
+    return '<button data-store="' + esc(s) + '"' + (s === POSTER_STORE ? ' class="on"' : '') + '>' + esc(s) + '</button>';
+  }).join('') || '<div class="hint" style="padding:.3rem">先に「マスタ」で店舗を登録してください</div>';
+  loadPosters();
+}
+on(q('posterStoreTabs'), 'click', function(e){
+  var b = e.target.closest('button');
+  if(!b) return;
+  POSTER_STORE = b.dataset.store;
+  document.querySelectorAll('#posterStoreTabs button').forEach(function(x){
+    x.classList.toggle('on', x.dataset.store === POSTER_STORE);
+  });
+  loadPosters();
+});
+
+function loadPosters(){
+  if(!POSTER_STORE){ q('posterList').innerHTML = ''; return; }
+  q('posterList').innerHTML = '<div class="loading"><span class="spin"></span>読み込み中…</div>';
+  gsRun('getPosters', POSTER_STORE).then(function(list){
+    POSTERS = list || [];
+    renderPosters();
+  }).catch(function(e){
+    q('posterList').innerHTML = '<div class="empty">' + esc(errMsg(e)) + '</div>';
+  });
+}
+
+function renderPosters(){
+  if(!POSTERS.length){
+    q('posterList').innerHTML = '<div class="empty">この店舗のポスターはまだありません<br>上の「＋」から追加してください</div>';
+    return;
+  }
+  q('posterList').innerHTML = POSTERS.map(function(p){
+    return '<div class="pcard" data-id="' + esc(p.id) + '">' +
+      '<div class="pcard-img"><img src="' + esc(p.thumbUrl) + '" alt="" loading="lazy"></div>' +
+      '<div class="pcard-body">' +
+        '<div class="pcard-title">' + esc(p.title || '（無題）') + '</div>' +
+        (p.memo ? '<div class="pcard-meta">' + esc(p.memo) + '</div>' : '') +
+        '<div class="pcard-meta">' + esc(p.at) + (p.by ? ' / ' + esc(p.by) : '') + '</div>' +
+        '<div class="pcard-actions">' +
+          '<a class="btn btn-primary btn-sm" href="' + esc(p.downloadUrl) + '" target="_blank" rel="noopener" data-act="dl">ダウンロード</a>' +
+          '<button class="btn btn-danger btn-sm" data-act="del">削除</button>' +
+        '</div>' +
+      '</div></div>';
+  }).join('');
+}
+
+on(q('posterList'), 'click', function(e){
+  var b = e.target.closest('button[data-act="del"]');
+  if(!b) return;
+  var id = b.closest('.pcard').dataset.id;
+  if(!confirm('このポスターを削除しますか？')) return;
+  gsRun('deletePoster', id).then(function(list){
+    POSTERS = list || [];
+    renderPosters();
+    toast('削除しました');
+  }).catch(function(err){ toast(errMsg(err), true); });
+});
+
+// ポスターは印刷にも使うので、写真より高解像度（長辺2000px・品質0.85）で保存する
+on(q('posterFile'), 'change', function(e){
+  var f = e.target.files && e.target.files[0];
+  if(!f) return;
+  e.target.value = '';
+  if(!POSTER_STORE){ toast('先に店舗を選んでください', true); return; }
+  var title = prompt('ポスターのタイトル（例：秋の新商品フェア）', '');
+  if(title == null) return;
+  var drop = q('posterDrop');
+  var span = drop.querySelector('span');
+  var origHtml = span ? span.innerHTML : '';
+  if(span) span.innerHTML = 'アップロード中…';
+  compressImage(f, 2000, 0.85).then(function(dataUrl){
+    return gsRun('addPoster', { store: POSTER_STORE, title: String(title).trim(), image: dataUrl, by: ME });
+  }).then(function(list){
+    POSTERS = list || [];
+    renderPosters();
+    toast('ポスターを追加しました');
+  }).catch(function(err){ toast(errMsg(err), true); })
+  .then(function(){ if(span) span.innerHTML = origHtml; });
 });
 
 // ============================================================
