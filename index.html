@@ -283,13 +283,13 @@ img{max-width:100%;display:block}
 .mrow{display:flex;align-items:center;gap:.4rem;padding:.5rem .55rem;background:var(--bg);border-radius:8px}
 .mrow .nm{flex:1;min-width:0;font-size:.85rem;font-weight:600}
 .mrow .sub{font-size:.7rem;color:var(--ink-faint);font-weight:400}
-/* 並び替えは▲▼ボタン方式。ドラッグ＆ドロップはスマホだと
-   スクロールと競合して誤操作しやすいため使わない */
-.ord{display:flex;flex-direction:column;gap:2px;flex:0 0 auto}
-.ord button{width:1.5rem;height:1.05rem;border-radius:4px;background:#fff;color:var(--ink-muted);
-  font-size:.6rem;line-height:1;display:flex;align-items:center;justify-content:center;border:1px solid var(--line)}
-.ord button:hover:not(:disabled){background:var(--brand-light);color:var(--brand-dark);border-color:var(--brand)}
-.ord button:disabled{opacity:.3;cursor:default}
+/* 並び替えはグリップを掴んでドラッグ。グリップにだけ touch-action:none を当て、
+   掴んでいる間だけスクロールを止める（行の他の部分は普通に触れる＝スマホでも誤操作しにくい） */
+.drag-handle{flex:0 0 auto;width:1.6rem;align-self:stretch;display:flex;align-items:center;justify-content:center;
+  color:var(--ink-faint);font-size:1.1rem;cursor:grab;touch-action:none;user-select:none;border-radius:6px}
+.drag-handle:hover{background:var(--brand-light);color:var(--brand-dark)}
+.drag-handle:active{cursor:grabbing}
+.mrow.dragging{opacity:.75;box-shadow:var(--shadow-lg);background:var(--brand-tint)}
 .addrow{display:flex;gap:.4rem;margin-top:.6rem}
 .addrow input{flex:1;padding:.5rem .65rem;border:1px solid var(--line);border-radius:8px;font-size:.85rem}
 
@@ -1828,51 +1828,71 @@ on(q('formSave'), 'click', function(){
 // ============================================================
 // イベント／店舗／カテゴリ マスタ
 // ============================================================
-// マスタ行の先頭に付ける並び替えボタン（先頭は▲、末尾は▼を無効化する）
+// マスタ行の先頭に付ける「掴んでドラッグ」用のグリップ。
+// ここをドラッグしたときだけ並べ替わる（行の他の部分は普通にスクロールできる＝スマホでも誤操作しにくい）
 function ordHtml(idx, total){
-  return '<div class="ord">' +
-    '<button data-act="up" title="上へ"' + (idx === 0 ? ' disabled' : '') + '>▲</button>' +
-    '<button data-act="down" title="下へ"' + (idx === total - 1 ? ' disabled' : '') + '>▼</button></div>';
+  return '<div class="drag-handle" title="ドラッグで並べ替え">⠿</div>';
 }
 
-// 配列内で1つ動かした結果の名前順を返す
-function movedNames(list, name, dir){
-  var names = list.map(function(x){ return typeof x === 'string' ? x : x.name; });
-  var i = names.indexOf(name);
-  var j = i + dir;
-  if(i < 0 || j < 0 || j >= names.length) return null;
-  names.splice(j, 0, names.splice(i, 1)[0]);
-  return names;
-}
-
-// 並び替えは押した瞬間に画面を動かし、サーバーへの保存はまとめて後から1回だけ送る。
-// ▲▼を連続で押しても、その都度サーバーへ送ると往復（1〜2秒）待ちで一覧がカクつくので、
-// クリックが止まって少し（450ms）経ってから、そのとき確定している並び順だけを送る。
-var REORDER_RENDER = {
-  reorderStores: renderStoreList, reorderCategories: renderCatList, reorderTags: renderTagList,
-  reorderMaterials: renderMmList
-};
+// マスタの並び替え：グリップ（.drag-handle）をドラッグして行を入れ替える。
+// HTML5のdragstartはスマホで効かないので、Pointer Eventsで自前実装する。
+// グリップに touch-action:none を当ててあるので、掴んでいる間だけスクロールが止まり、
+// 行の他の部分は普通にスクロールできる（＝スマホでも誤操作しにくい）。
 var reorderTimers = {};
-function reorderMaster(action, list, name, dir){
-  var names = movedNames(list, name, dir);
-  if(!names) return;
+var DRAG = { row:null, container:null, action:null, list:null };
 
-  // 画面はその場で並び替える（該当マスタだけ描き直す）
-  var byName = {};
-  list.forEach(function(x){ byName[typeof x === 'string' ? x : x.name] = x; });
-  var sorted = names.map(function(n){ return byName[n]; });
+// containerId のリストをドラッグ並べ替え可能にする。action はサーバーの並べ替えAPI名、
+// getList はそのマスタの配列（D.stores 等）を返す関数。
+function initDragReorder(containerId, action, getList){
+  var container = q(containerId);
+  if(!container) return;
+  on(container, 'pointerdown', function(e){
+    var h = e.target.closest('.drag-handle');
+    if(!h) return;
+    var row = h.closest('.mrow');
+    if(!row) return;
+    e.preventDefault();
+    DRAG.row = row; DRAG.container = container; DRAG.action = action; DRAG.list = getList();
+    row.classList.add('dragging');
+    try{ h.setPointerCapture(e.pointerId); }catch(err){}
+  });
+  on(container, 'pointermove', function(e){
+    if(!DRAG.row || DRAG.container !== container) return;
+    e.preventDefault();
+    var rows = [].slice.call(container.querySelectorAll('.mrow')).filter(function(r){ return r !== DRAG.row; });
+    var before = null;
+    for(var i = 0; i < rows.length; i++){
+      var rect = rows[i].getBoundingClientRect();
+      if(e.clientY < rect.top + rect.height / 2){ before = rows[i]; break; }
+    }
+    if(before) container.insertBefore(DRAG.row, before);
+    else container.appendChild(DRAG.row);
+  });
+  function end(){
+    if(!DRAG.row || DRAG.container !== container) return;
+    DRAG.row.classList.remove('dragging');
+    var names = [].map.call(container.querySelectorAll('.mrow'), function(r){ return r.dataset.name; });
+    commitReorder(DRAG.action, DRAG.list, names);
+    DRAG.row = null; DRAG.container = null; DRAG.list = null; DRAG.action = null;
+  }
+  on(container, 'pointerup', end);
+  on(container, 'pointercancel', end);
+}
+
+// 画面の並び（names）に配列を合わせ、少し待ってからサーバーへ送る（連続操作をまとめる）
+function commitReorder(action, list, names){
+  var by = {};
+  list.forEach(function(x){ by[typeof x === 'string' ? x : x.name] = x; });
+  var sorted = names.map(function(n){ return by[n]; }).filter(function(x){ return x !== undefined; });
   list.length = 0;
   sorted.forEach(function(x){ list.push(x); });
-  var rerender = REORDER_RENDER[action];
-  if(rerender) rerender();
-  if(F.group !== 'none') render();   // 一覧をグループ表示中なら見出し順も追従させる
+  if(F.group !== 'none') render();   // 一覧をグループ表示中なら見出し順も追従
 
-  // 連続クリックをまとめて、最後の並びだけをサーバーへ送る
   clearTimeout(reorderTimers[action]);
   reorderTimers[action] = setTimeout(function(){
-    var finalNames = list.map(function(x){ return typeof x === 'string' ? x : x.name; });
-    gsRun(action, finalNames).catch(function(e){ toast(errMsg(e), true); return reload(); });
-  }, 450);
+    gsRun(action, list.map(function(x){ return typeof x === 'string' ? x : x.name; }))
+      .catch(function(e){ toast(errMsg(e), true); return reload(); });
+  }, 400);
 }
 
 function renderStoreList(){
@@ -1891,9 +1911,7 @@ on(q('storeList'), 'click', function(e){
   var b = e.target.closest('button');
   if(!b) return;
   var name = b.closest('.mrow').dataset.name;
-  if(b.dataset.act === 'up' || b.dataset.act === 'down'){
-    reorderMaster('reorderStores', D.stores, name, b.dataset.act === 'up' ? -1 : 1);
-  }else if(b.dataset.act === 'rename'){
+  if(b.dataset.act === 'rename'){
     var nn = prompt('新しい店舗名', name);
     if(nn == null) return;
     var st = (D.stores||[]).filter(function(x){ return x.name === name; })[0] || {};
@@ -1935,9 +1953,7 @@ on(q('mmList'), 'click', function(e){
   var b = e.target.closest('button');
   if(!b) return;
   var name = b.closest('.mrow').dataset.name;
-  if(b.dataset.act === 'up' || b.dataset.act === 'down'){
-    reorderMaster('reorderMaterials', D.materialMasters, name, b.dataset.act === 'up' ? -1 : 1);
-  }else if(b.dataset.act === 'edit'){
+  if(b.dataset.act === 'edit'){
     openMaterialModal(name);
   }
 });
@@ -2019,10 +2035,6 @@ on(q('catList'), 'click', function(e){
   var b = e.target.closest('button');
   if(!b) return;
   var name = b.closest('.mrow').dataset.name;
-  if(b.dataset.act === 'up' || b.dataset.act === 'down'){
-    reorderMaster('reorderCategories', D.categories, name, b.dataset.act === 'up' ? -1 : 1);
-    return;
-  }
   if(!confirm('カテゴリ「' + name + '」を削除しますか？')) return;
   gsRun('deleteCategory', name).then(function(){ toast('削除しました'); return reload(); })
     .catch(function(err){ toast(errMsg(err), true); });
@@ -2057,9 +2069,7 @@ on(q('tagList'), 'click', function(e){
   var b = e.target.closest('button');
   if(!b) return;
   var name = b.closest('.mrow').dataset.name;
-  if(b.dataset.act === 'up' || b.dataset.act === 'down'){
-    reorderMaster('reorderTags', D.tags, name, b.dataset.act === 'up' ? -1 : 1);
-  }else if(b.dataset.act === 'rename'){
+  if(b.dataset.act === 'rename'){
     var nn = prompt('新しいタグ名（付いている全アイデアに反映されます）', name);
     if(nn == null) return;
     gsRun('renameTag', name, nn)
@@ -2261,6 +2271,11 @@ on(q('gateInput'), 'keydown', function(e){
   PRES = lsGet(LS_PRES) || '';
   loadRead();
   renderPresPanel();
+  // マスタ各リストをドラッグ並べ替え可能にする（コンテナは常設なので1回登録すればよい）
+  initDragReorder('mmList', 'reorderMaterials', function(){ return D.materialMasters; });
+  initDragReorder('storeList', 'reorderStores', function(){ return D.stores; });
+  initDragReorder('catList', 'reorderCategories', function(){ return D.categories; });
+  initDragReorder('tagList', 'reorderTags', function(){ return D.tags; });
   var saved = lsGet(LS_PASSCODE);
   if(saved){
     q('gateMsg').textContent = '読み込み中…';
