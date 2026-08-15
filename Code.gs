@@ -86,8 +86,10 @@ const IDEA_COL = {
   storage: 22, bestBefore: 23, memo: 24,
   photo1: 25, photo2: 26, updatedAt: 27, updatedBy: 28,
   dept: 29,     // 部門（店舗部門／ぎゅう丸ラボ）
-  presAt: 30    // 社長コメントの最終投稿日時。一覧の未読判定に使う非正規化値で、
-                // 正本はコメントシート。postComment_ が社長投稿のたびに書き換える
+  presAt: 30,   // 社長コメントの最終投稿日時。postComment_ が社長投稿のたびに書き換える
+  seenAt: 31    // 「見ました」確認の最終日時（全員共有・端末非依存）。
+                // presAt より古ければ New（新しい社長コメントあり）。
+                // 誰かが「見ました」チェック or 社長へ返信すると now に更新され、全員のNewが消える
 };
 
 // 分類の軸は3つ。それぞれ役割が違う。
@@ -103,7 +105,7 @@ const IDEA_HEADERS = [
   'エネルギー(kcal)', 'たんぱく質(g)', '脂質(g)', '炭水化物(g)', '食塩相当量(g)',
   '保存方法', '賞味期限目安', 'メモ',
   '写真URL1', '写真URL2', '更新日時', '更新者',
-  '部門', '社長コメント日時'
+  '部門', '社長コメント日時', '確認日時'
 ];
 
 // 数式インジェクション対策として書式を強制的に「テキスト」にする列。
@@ -222,6 +224,7 @@ function apiCall(passcode, action, args) {
     case 'getInitialData':   return getInitialData_(args[0]);
     case 'getIdeaDetail':    return getIdeaDetail_(args[0]);
     case 'postComment':      return postComment_(args[0], args[1], args[2]);
+    case 'markSeen':         return markSeen_(args[0]);
     case 'verifyPresident':  return verifyPresident_(args[0]);
     case 'addTag':           return addTag_(args[0]);
     case 'renameTag':        return renameTag_(args[0], args[1]);
@@ -313,6 +316,7 @@ function getIdeaSheet_() {
 //       既存行の部門は、提案店舗が「ぎゅう丸ラボ」ならぎゅう丸ラボ、それ以外は店舗部門で初期化する
 //   v4: ステータスを2択（アイデア／採用）へ寄せる。旧「提案中／検討中／見送り」→「アイデア」
 //   v5: 運用をやめた「採用月」「イベント」列を削除する
+//   v6: 「確認日時」列を末尾に追加（New表示を全員共有の1フラグで管理するため）
 function migrateIdeaSheet_(sh) {
   const lastCol = sh.getLastColumn();
   if (lastCol < 1) return;
@@ -330,9 +334,14 @@ function migrateIdeaSheet_(sh) {
     }
   });
 
-  // v3: 部門・社長コメント日時の追加（必ず末尾に足す。途中に挿すと既存データがズレる）
+  // v3/v6: 末尾に列を追加（部門・社長コメント日時・確認日時）。途中に挿すと既存データがズレるので必ず末尾。
   const needDept = header.indexOf('部門') < 0;
-  if (structural || needDept) {
+  const needSeen = header.indexOf('確認日時') < 0;
+  if (structural || needDept || needSeen) {
+    // 物理的な列数が足りなければ先に足す（足りない状態で範囲書き込みするとエラーになる）
+    if (sh.getMaxColumns() < IDEA_HEADERS.length) {
+      sh.insertColumnsAfter(sh.getMaxColumns(), IDEA_HEADERS.length - sh.getMaxColumns());
+    }
     sh.getRange(1, 1, 1, IDEA_HEADERS.length).setValues([IDEA_HEADERS]);
     const rows = Math.max(sh.getMaxRows() - 1, 1);
     IDEA_TEXT_COLS.forEach(col => sh.getRange(2, col, rows, 1).setNumberFormat('@'));
@@ -582,13 +591,14 @@ function rowToIdea_(row, rowNum) {
     updatedBy: cell_(row, IDEA_COL.updatedBy),
     // 移行前の既存行など部門が空のものは店舗部門として扱う（絞り込みから漏れないように）
     dept: cell_(row, IDEA_COL.dept) || DEPT_OPTIONS[0],
-    presAt: cell_(row, IDEA_COL.presAt)
+    presAt: cell_(row, IDEA_COL.presAt),
+    seenAt: cell_(row, IDEA_COL.seenAt)
   };
 }
 
-// presAt はフォームからは編集できない値なので、呼び出し側が
+// presAt・seenAt はフォームからは編集できない値なので、呼び出し側が
 // 「新規なら空」「更新なら旧行の値」を明示的に渡す（dataに紛れ込ませない）
-function ideaToRow_(id, data, costs, photo1, photo2, updatedAt, presAt) {
+function ideaToRow_(id, data, costs, photo1, photo2, updatedAt, presAt, seenAt) {
   const row = new Array(IDEA_HEADERS.length).fill('');
   const set = (col, v) => { row[col - 1] = v; };
 
@@ -623,6 +633,7 @@ function ideaToRow_(id, data, costs, photo1, photo2, updatedAt, presAt) {
   set(IDEA_COL.updatedBy, String(data.updatedBy || '').trim());
   set(IDEA_COL.dept, DEPT_OPTIONS.indexOf(data.dept) >= 0 ? data.dept : DEPT_OPTIONS[0]);
   set(IDEA_COL.presAt, presAt || '');
+  set(IDEA_COL.seenAt, seenAt || '');
 
   return row;
 }
@@ -794,7 +805,7 @@ function addIdea_(data) {
     const photo1 = resolvePhoto_(data.photo1, '');
     const photo2 = resolvePhoto_(data.photo2, '');
     const updatedAt = nowStr_();
-    const row = ideaToRow_(id, data, costs, photo1, photo2, updatedAt, '');
+    const row = ideaToRow_(id, data, costs, photo1, photo2, updatedAt, '', '');
 
     const startRow = sh.getLastRow() + 1;
     applyIdeaTextFormat_(sh, startRow);
@@ -854,7 +865,7 @@ function updateIdea_(id, data) {
       date: data.date || cell_(oldRow, IDEA_COL.date)
     });
     const row = ideaToRow_(id, merged, costs, photo1, photo2, updatedAt,
-                           cell_(oldRow, IDEA_COL.presAt));
+                           cell_(oldRow, IDEA_COL.presAt), cell_(oldRow, IDEA_COL.seenAt));
 
     applyIdeaTextFormat_(sh, rowNum);
     sh.getRange(rowNum, 1, 1, row.length).setValues([row]);
@@ -983,6 +994,24 @@ function postComment_(ideaId, payload, presidentPass) {
       idea: rowToIdea_(row, rowNum),
       comments: getCommentsFor_(ideaId)
     };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// 「見ました」確認。確認日時を now にして、その商品の New を全員ぶん消す（端末非依存の共有フラグ）。
+// 社長へ返信しただけでは消えない（明示的に確認したときだけ消す方針）。
+function markSeen_(ideaId) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const sh = getIdeaSheet_();
+    const rowNum = findIdeaRow_(sh, ideaId);
+    if (rowNum < 0) throw new Error('アイデアが見つかりません: ' + ideaId);
+    sh.getRange(rowNum, IDEA_COL.seenAt, 1, 1).setNumberFormat('@');
+    sh.getRange(rowNum, IDEA_COL.seenAt, 1, 1).setValues([[nowStr_()]]);
+    const row = sh.getRange(rowNum, 1, 1, IDEA_HEADERS.length).getValues()[0];
+    return { idea: rowToIdea_(row, rowNum) };
   } finally {
     lock.releaseLock();
   }

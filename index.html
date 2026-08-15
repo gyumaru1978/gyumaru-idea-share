@@ -82,9 +82,14 @@ img{max-width:100%;display:block}
 .grid{display:grid;grid-template-columns:1fr;gap:.7rem}
 @media(min-width:640px){.grid{grid-template-columns:repeat(2,1fr)}}
 @media(min-width:1024px){.grid{grid-template-columns:repeat(3,1fr)}}
-.card{background:#fff;border-radius:12px;box-shadow:var(--shadow);overflow:hidden;text-align:left;width:100%;
+.card{position:relative;background:#fff;border-radius:12px;box-shadow:var(--shadow);overflow:visible;text-align:left;width:100%;
   display:flex;flex-direction:column;transition:box-shadow .15s}
 .card:hover{box-shadow:var(--shadow-lg)}
+.card-body{overflow:hidden;border-radius:12px}
+/* New（新しい社長コメント）を角に赤いポップで出す */
+.new-pop{position:absolute;top:-.45rem;right:-.35rem;z-index:3;background:var(--danger);color:#fff;
+  font-size:.64rem;font-weight:800;letter-spacing:.03em;border-radius:999px;padding:.12rem .5rem;
+  box-shadow:0 2px 6px rgba(220,38,38,.4)}
 .card-body{padding:.7rem .8rem .8rem;display:flex;flex-direction:column;gap:.4rem;flex:1}
 /* 写真は「あるときだけ」小さく出す。無いときにプレースホルダを置くと、
    写真未登録の案ばかりのときに空欄だらけになって一覧が読みにくくなるため */
@@ -136,8 +141,8 @@ img{max-width:100%;display:block}
 .hdr-pres{font-size:.68rem;background:#fbbf24;color:#78350f;border-radius:999px;padding:.14rem .55rem;font-weight:700;white-space:nowrap}
 
 .pill{display:inline-block;padding:.16rem .5rem;border-radius:999px;font-size:.68rem;font-weight:700;white-space:nowrap}
-.pill-アイデア{background:#eff6ff;color:#1d4ed8}
-.pill-採用{background:var(--brand-light);color:var(--brand-dark)}
+.pill-アイデア{background:#2563eb;color:#fff}
+.pill-採用{background:var(--brand);color:#fff}
 .badge{display:inline-block;padding:.16rem .5rem;border-radius:6px;font-size:.68rem;font-weight:700;background:var(--brand-tint);color:var(--brand-dark);white-space:nowrap}
 .badge-store{background:#eef2ff;color:#4338ca}
 .badge-dept{background:var(--brand-tint);color:var(--brand-dark)}
@@ -149,13 +154,16 @@ img{max-width:100%;display:block}
 /* カテゴリごとの見出し。タグではなくカテゴリで区切るのは、タグが1案に複数付くため
    タグで区切ると同じ案が複数の見出しの下に重複して現れてしまうから。
    はっきりした帯にし、スクロール中も今どのカテゴリを見ているか分かるよう上部に貼り付ける。 */
-.ghead{display:flex;align-items:center;gap:.6rem;margin:1.2rem 0 .7rem;padding:.5rem .85rem;
-  background:var(--brand-light);border:1px solid var(--brand);border-radius:9px;
+.ghead{display:flex;align-items:center;gap:.5rem;margin:1.2rem 0 .7rem;padding:.5rem .85rem;
+  background:var(--brand-light);border:1px solid var(--brand);border-radius:9px;cursor:pointer;
   position:sticky;top:var(--ghead-top,96px);z-index:6}
 .ghead:first-child{margin-top:.2rem}
+.ghead .gchev{font-size:.7rem;color:var(--brand-dark);flex:0 0 auto;width:.9rem}
 .ghead h3{font-size:.95rem;font-weight:800;color:var(--brand-dark);letter-spacing:.03em;flex:0 0 auto}
 .ghead .gn{font-size:.72rem;color:var(--brand-dark);font-weight:700;background:rgba(255,255,255,.6);
   border-radius:999px;padding:.1rem .55rem}
+.ghead .gnew{font-size:.66rem;color:#fff;font-weight:800;background:var(--danger);
+  border-radius:999px;padding:.1rem .5rem}
 .empty{text-align:center;padding:3.5rem 1rem;color:var(--ink-faint)}
 .empty .ic{font-size:2.5rem;margin-bottom:.5rem}
 
@@ -683,15 +691,12 @@ var LS_PASSCODE = 'idea_passcode';
 var LS_ME       = 'idea_me';       // 任意の表示名。コメントの投稿者ラベルに使うだけ
 var LS_FILTER   = 'idea_filter';   // 絞り込みの選択状態
 var LS_PRES     = 'idea_pres';     // 社長モードの合い言葉（本人確認はサーバー側が毎回行う）
-var LS_READ     = 'idea_read';     // 既読の記録。{アイデアID: 読んだ社長コメントの日時}
+var LS_COLLAPSE = 'idea_collapse'; // 一覧で折りたたんでいるカテゴリ名の配列
 
 var PASSCODE = '';
 var ME = '';
 var PRES = '';                     // 社長モードの合い言葉。空なら通常モード
-// 既読はこの端末だけで持つ。社員ごとのアカウントを作らない運用なので、
-// 既読のためだけに名前を管理させない判断。
-// 代償は「同じ人がPCとスマホで見ると片方でまた未読に見える」ことだが、見逃す方向には壊れない。
-var READ = {};
+var COLLAPSED = {};                // 折りたたみ中のカテゴリ名 { 名前: true }
 var MMAP = {};            // 材料名 → 材料マスタ obj（原価・栄養・アレルギーの自動計算に使う）
 var MM_EDIT = null;       // 材料マスタ編集モーダルで編集中の材料名（新規は null）
 var MM_ALLERGENS = [];    // 材料マスタ編集モーダルで選択中のアレルギー
@@ -703,7 +708,7 @@ var D = {  // サーバーから取得したマスタ類
 };
 // group は一覧の並び順。既定は「カテゴリごと」にまとめて表示。
 // gv は「カテゴリ既定化」を古い端末へ1回だけ反映するためのバージョン印
-var F = { status:'', unread:false, store:'', cats:[], tags:[], q:'', group:'category', dept:'', gv:0 };
+var F = { status:'', store:'', cats:[], tags:[], q:'', group:'category', dept:'', gv:0 };
 var FORM = { id:null, materials:[], status:'アイデア', cats:[], tags:[], allergens:[], storage:'',
              photo1:'', photo2:'', posters:[], newPosters:[], updatedAt:'', dept:'店舗部門', deptTouched:false };
 var DETAIL = null;        // 現在詳細を開いているアイデア
@@ -776,27 +781,13 @@ function rateClass(r){
 // ============================================================
 // 未読判定（既読はこの端末のlocalStorageだけで管理する）
 // ============================================================
-// 「社長コメントの最終日時」が「この端末で読んだ日時」より新しければ未読。
+// New判定（全員共有・端末非依存）。
+// 「社長コメントの最終日時(presAt)」が「確認日時(seenAt)」より新しければ New。
+// 誰かが「見ました」チェックで確認するとseenAtが更新され、全員のNewが消える。
 // 日時は 'yyyy/MM/dd HH:mm' の固定形式なので文字列比較で正しく大小が決まる。
-function isUnread(i){
+function isNew(i){
   if(!i.presAt) return false;
-  var seen = READ[i.id] || '';
-  return seen < i.presAt;
-}
-function markReadLocal(id, at){
-  if(!at) return;
-  READ[id] = at;
-  lsSet(LS_READ, JSON.stringify(READ));
-}
-function clearReadLocal(id){
-  delete READ[id];
-  lsSet(LS_READ, JSON.stringify(READ));
-}
-function loadRead(){
-  try{
-    var s = lsGet(LS_READ);
-    READ = s ? (JSON.parse(s) || {}) : {};
-  }catch(e){ READ = {}; }
+  return !i.seenAt || i.seenAt < i.presAt;
 }
 // カード下部に出す「最終更新日時」。編集と社長コメントの新しい方
 function latestAt(i){
@@ -973,9 +964,8 @@ on(q('stats'), 'click', function(e){
   var t = e.target.closest('.stat');
   if(!t) return;
   var f = t.dataset.filter;
-  if(f === 'unread'){ F.unread = !F.unread; F.status = ''; }         // 未読トグル
-  else if(f === 'all'){ F.unread = false; F.status = ''; }           // 表示中＝絞り込み解除
-  else { F.status = (F.status === f) ? '' : f; F.unread = false; }   // アイデア／採用（再クリックで解除）
+  if(f === 'all'){ F.status = ''; }                          // 全表示＝ステータス絞り込み解除
+  else { F.status = (F.status === f) ? '' : f; }             // 採用／アイデア（再クリックで解除）
   saveFilter();
   render();
 });
@@ -1022,7 +1012,7 @@ on(q('fGroup'), 'click', function(e){ var b = e.target.closest('.pick'); if(!b) 
   F.group = b.dataset.val; renderFilterPicks(); saveFilter(); render(); });
 on(q('fQ'), 'input', function(){ F.q = q('fQ').value; saveFilter(); render(); });
 on(q('fReset'), 'click', function(){
-  F.status = ''; F.unread = false; F.store = ''; F.cats = []; F.tags = []; F.q = ''; F.group = 'category';
+  F.status = ''; F.store = ''; F.cats = []; F.tags = []; F.q = ''; F.group = 'category';
   q('fQ').value = '';
   renderFilterPicks(); saveFilter(); render();
 });
@@ -1058,7 +1048,6 @@ function restoreFilter(){
 function filtered(){
   return D.ideas.filter(function(i){
     if(F.dept && i.dept !== F.dept) return false;
-    if(F.unread && !isUnread(i)) return false;
     if(F.status && i.status !== F.status) return false;
     if(F.store && i.store !== F.store) return false;
     if(F.cats.length && !F.cats.every(function(c){ return (i.categories||[]).indexOf(c) >= 0; })) return false;
@@ -1070,8 +1059,8 @@ function filtered(){
     }
     return true;
   }).sort(function(a, b){
-    // 未読（社長コメントあり）を最優先で先頭へ。その後は更新日時が新しい順 → ID降順
-    var ua = isUnread(a) ? 1 : 0, ub = isUnread(b) ? 1 : 0;
+    // New（新しい社長コメントあり）を最優先で先頭へ。その後は更新日時が新しい順 → ID降順
+    var ua = isNew(a) ? 1 : 0, ub = isNew(b) ? 1 : 0;
     if(ua !== ub) return ub - ua;
     var la = latestAt(a), lb = latestAt(b);
     if(la !== lb) return la < lb ? 1 : -1;
@@ -1131,15 +1120,27 @@ function groupedHtml(rows, key){
   });
 
   return names.map(function(n){
-    return '<div class="ghead"><h3>' + esc(n) + '</h3>' +
-      '<span class="gn">' + buckets[n].length + '件</span></div>' +
-      '<div class="grid">' + buckets[n].map(cardHtml).join('') + '</div>';
+    var collapsed = !!COLLAPSED[n];
+    var newCount = buckets[n].filter(isNew).length;
+    return '<div class="ghead' + (collapsed ? ' collapsed' : '') + '" data-cat="' + esc(n) + '">' +
+      '<span class="gchev">' + (collapsed ? '▶' : '▼') + '</span>' +
+      '<h3>' + esc(n) + '</h3>' +
+      '<span class="gn">' + buckets[n].length + '件</span>' +
+      (newCount ? '<span class="gnew">New ' + newCount + '</span>' : '') +
+      '</div>' +
+      (collapsed ? '' : '<div class="grid">' + buckets[n].map(cardHtml).join('') + '</div>');
   }).join('');
 }
+function saveCollapse(){
+  lsSet(LS_COLLAPSE, JSON.stringify(Object.keys(COLLAPSED).filter(function(k){ return COLLAPSED[k]; })));
+}
+function loadCollapse(){
+  COLLAPSED = {};
+  try{ (JSON.parse(lsGet(LS_COLLAPSE)) || []).forEach(function(n){ COLLAPSED[n] = true; }); }catch(e){}
+}
 
-// サマリーの数字タイルは絞り込みボタンでもある。
-// タイルの件数は「ステータス・未読以外の条件（部門/店舗/カテゴリ/タグ/検索）を適用した集合」で数える。
-// こうすると、部門を切り替えたときにその中でのアイデア/採用/未読の件数が出る。
+// サマリーの数字タイルは絞り込みボタンでもある（全表示／採用／アイデア）。
+// タイルの件数は「ステータス以外の条件（部門/店舗/カテゴリ/タグ/検索）を適用した集合」で数える。
 function statsBase(){
   return D.ideas.filter(function(i){
     if(F.dept && i.dept !== F.dept) return false;
@@ -1156,23 +1157,19 @@ function statsBase(){
 }
 function renderStats(rows, base){
   function count(s){ return base.filter(function(i){ return i.status === s; }).length; }
-  var unread = base.filter(isUnread).length;
-  function tile(filter, num, label, active, danger){
+  function tile(filter, num, label, active){
     return '<button class="stat' + (active ? ' on' : '') + '" data-filter="' + filter + '">' +
-      '<b' + (danger && num ? ' style="color:var(--danger)"' : '') + '>' + num + '</b>' +
-      '<span>' + label + '</span></button>';
+      '<b>' + num + '</b><span>' + label + '</span></button>';
   }
-  var none = !F.unread && !F.status;
   q('stats').innerHTML =
-    tile('unread', unread, '未読', F.unread, true) +
-    tile('all', rows.length, '表示中', none, false) +
-    tile('採用', count('採用'), '採用', F.status === '採用', false) +
-    tile('アイデア', count('アイデア'), 'アイデア', F.status === 'アイデア', false);
+    tile('all', base.length, '全表示', !F.status) +
+    tile('採用', count('採用'), '採用', F.status === '採用') +
+    tile('アイデア', count('アイデア'), 'アイデア', F.status === 'アイデア');
 }
 
 function cardHtml(i){
   var img = photoUrl(i.photo1);
-  var unread = isUnread(i);
+  var isnew = isNew(i);
   var badges = '';
   if(i.store) badges += '<span class="badge badge-store">' + esc(i.store) + '</span>';
   // 部門バッジは「すべて」表示のときだけ出す（部門で絞っている間は全カード同じで邪魔）。
@@ -1182,11 +1179,12 @@ function cardHtml(i){
   var tags = (i.tags||[]).slice(0, 4).map(function(t){ return '<span class="tag">#' + esc(t) + '</span>'; }).join('');
   var cats = (i.categories||[]).map(function(c){ return '<span class="tag">' + esc(c) + '</span>'; }).join('');
 
-  // 未読は「1行のバッジ＋左端のアクセント」だけ。社長コメント本文は一覧には出さず、
-  // 詳細を開いて読む（＝開いた時点で既読になる）設計
-  return '<button class="card' + (unread ? ' unread' : '') + '" data-id="' + esc(i.id) + '">' +
+  // New（新しい社長コメントあり）は「Newポップ＋左端アクセント」で目立たせる。
+  // 本文は一覧に出さず、詳細で読んで「見ました」で消す設計
+  return '<button class="card' + (isnew ? ' unread' : '') + '" data-id="' + esc(i.id) + '">' +
+    (isnew ? '<span class="new-pop">New</span>' : '') +
     '<div class="card-body">' +
-      (unread ? '<div class="card-unread">未読 社長コメント更新<span class="un-at">' +
+      (isnew ? '<div class="card-unread">社長コメント更新<span class="un-at">' +
         esc(i.presAt) + '</span></div>' : '') +
       '<div class="card-top">' +
         (img ? '<img class="card-thumb" src="' + esc(img) + '" alt="" loading="lazy">' : '') +
@@ -1204,6 +1202,14 @@ function cardHtml(i){
 }
 
 on(q('list'), 'click', function(e){
+  var head = e.target.closest('.ghead');
+  if(head){
+    var cat = head.dataset.cat;
+    COLLAPSED[cat] = !COLLAPSED[cat];
+    saveCollapse();
+    render();
+    return;
+  }
   var c = e.target.closest('.card');
   if(c) openDetail(c.dataset.id);
 });
@@ -1274,11 +1280,11 @@ function detailHtml(i, materials, comments, posters){
                '<div class="pb-text">' + esc(c.text) + '</div></div>';
            }).join('') + '</div>';
     }
-    // 既読は本人がチェックして確定する（この端末に記録される）
-    var done = !isUnread(i);
+    // 「見ました」チェックで確認日時を更新し、全員のNewを消す（端末非依存の共有フラグ）
+    var done = !isNew(i);
     h += '<label class="readchk' + (done ? ' done' : '') + '" id="readWrap">' +
-         '<input type="checkbox" id="readChk"' + (done ? ' checked' : '') + '>' +
-         '<span id="readLbl">' + (done ? '確認済み' : '内容を確認した（既読にする）') + '</span></label>';
+         '<input type="checkbox" id="readChk"' + (done ? ' checked disabled' : '') + '>' +
+         '<span id="readLbl">' + (done ? '確認済み' : '見ました（Newを消す）') + '</span></label>';
   }else{
     h += '<div style="font-size:.8rem;color:var(--ink-faint)">まだコメントはありません</div>';
   }
@@ -1400,15 +1406,20 @@ on(q('d-body'), 'click', function(e){
   }
 });
 
-// 既読チェックボックス。チェックを外せば未読に戻せる（あとで読み返したいとき用）
+// 「見ました」チェック。サーバーの確認日時を更新して、全員のNewを消す（元に戻すのは不可＝一方向）
 on(q('d-body'), 'change', function(e){
   if(e.target.id !== 'readChk' || !DETAIL) return;
-  var on = e.target.checked;
-  if(on) markReadLocal(DETAIL.id, DETAIL.presAt);
-  else   clearReadLocal(DETAIL.id);
-  q('readWrap').classList.toggle('done', on);
-  q('readLbl').textContent = on ? '確認済み' : '内容を確認した（既読にする）';
-  render();   // 背後の一覧の未読バッジを更新
+  if(!e.target.checked) return;
+  e.target.disabled = true;
+  var id = DETAIL.id;
+  q('readWrap').classList.add('done');
+  q('readLbl').textContent = '確認済み';
+  gsRun('markSeen', id).then(function(res){
+    DETAIL = res.idea;
+    var idx = D.ideas.findIndex(function(i){ return String(i.id) === String(id); });
+    if(idx >= 0) D.ideas[idx] = res.idea;
+    render();   // 背後の一覧のNewを消す
+  }).catch(function(err){ toast(errMsg(err), true); });
 });
 
 function submitComment(kind, textId, nameId, btn){
@@ -1428,8 +1439,7 @@ function submitComment(kind, textId, nameId, btn){
       DETAIL = res.idea;
       var idx = D.ideas.findIndex(function(i){ return String(i.id) === String(id); });
       if(idx >= 0) D.ideas[idx] = res.idea;
-      // 社長が自分で書いた方針を自分あてに未読表示しても意味がないので既読にしておく
-      if(fromPres) markReadLocal(id, res.idea.presAt);
+      // 返信ではNewを消さない方針（B案）。社長投稿でNewが立つのはそのまま
       q('d-body').innerHTML = detailHtml(res.idea, DETAIL_MATS, res.comments || [], DETAIL_POSTERS);
       render();
       toast('投稿しました');
@@ -2298,7 +2308,7 @@ on(q('gateInput'), 'keydown', function(e){
 (function init(){
   setMe(lsGet(LS_ME) || '');
   PRES = lsGet(LS_PRES) || '';
-  loadRead();
+  loadCollapse();
   renderPresPanel();
   // マスタ各リストをドラッグ並べ替え可能にする（コンテナは常設なので1回登録すればよい）
   initDragReorder('mmList', 'reorderMaterials', function(){ return D.materialMasters; });
