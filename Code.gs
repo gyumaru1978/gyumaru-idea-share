@@ -124,9 +124,11 @@ const MATERIAL_TEXT_COLS = [1, 3, 5, 8];
 const STORE_HEADERS   = ['店舗名', '表示順'];
 const STORE_TEXT_COLS = [1];
 
-// ポスターは店舗ごとに保管する。1店舗に何枚でも。画像はDriveに置き、シートにはファイルIDを持つ
+// ポスターは商品（アイデア）ごとに保管し、1枚ずつ「どの店舗で使ったか」のラベルを付ける。
+// 商品の編集画面で追加し、詳細画面で一覧・ダウンロードする。
+// 画像はDriveに置き、シートにはファイルIDを持つ
 // （URLでなくIDにしておくと、表示用サムネイルとダウンロード用リンクの両方を組み立てられる）。
-const POSTER_HEADERS   = ['ポスターID', '店舗', 'タイトル', 'ファイルID', '登録日時', '登録者', 'メモ'];
+const POSTER_HEADERS   = ['ポスターID', 'アイデアID', '店舗', 'タイトル', 'ファイルID', '登録日時', '登録者'];
 const POSTER_TEXT_COLS = [1, 2, 3, 4, 5, 6, 7];
 
 const CATEGORY_HEADER = 'カテゴリ名';
@@ -210,7 +212,6 @@ function apiCall(passcode, action, args) {
     case 'updateStore':      return updateStore_(args[0], args[1]);
     case 'deleteStore':      return deleteStore_(args[0]);
     case 'reorderStores':    return reorderStores_(args[0]);
-    case 'getPosters':       return getPosters_(args[0]);
     case 'addPoster':        return addPoster_(args[0]);
     case 'deletePoster':     return deletePoster_(args[0]);
     case 'addCategory':      return addCategory_(args[0]);
@@ -474,7 +475,8 @@ function getIdeaDetail_(id) {
   return {
     idea: rowToIdea_(row, rowNum),
     materials: getMaterialsFor_(id),
-    comments: getCommentsFor_(id)
+    comments: getCommentsFor_(id),
+    posters: getPostersFor_(id)
   };
 }
 
@@ -855,6 +857,7 @@ function deleteIdea_(id) {
     const photoUrls = sh.getRange(rowNum, IDEA_COL.photo1, 1, 2).getValues()[0];
     sh.deleteRow(rowNum);
     deleteMaterialsFor_(id);
+    deletePostersFor_(id);
     photoUrls.forEach(url => deletePhotoByUrl_(url));
     return { id: id };
   } finally {
@@ -1156,28 +1159,26 @@ function deleteStore_(name) {
 }
 
 // ============================================================
-// ポスター（店舗ごとに保管、ダウンロード可）
+// ポスター（商品ごとに保管、店舗ラベル付き、ダウンロード可）
 // ============================================================
-// 店舗を指定して、その店舗のポスター一覧を返す（store 未指定なら全店舗ぶん）。
-// 表示用サムネイルとダウンロード用リンクの両方を組み立てて返す。
-function getPosters_(store) {
+// 指定アイデアのポスター一覧。表示用サムネイルとダウンロード用リンクを組み立てて返す。
+function getPostersFor_(ideaId) {
   const sh = getPosterSheet_();
   const lastRow = sh.getLastRow();
   if (lastRow < 2) return [];
-  const target = String(store == null ? '' : store).trim();
+  const target = String(ideaId).trim();
   return sh.getRange(2, 1, lastRow - 1, POSTER_HEADERS.length).getValues()
-    .filter(r => String(r[0]).trim() !== '')
-    .filter(r => !target || String(r[1]).trim() === target)
+    .filter(r => String(r[1]).trim() === target)
     .map(r => {
-      const fileId = String(r[3]).trim();
+      const fileId = String(r[4]).trim();
       return {
         id: String(r[0]).trim(),
-        store: String(r[1]).trim(),
-        title: r[2] || '',
+        ideaId: String(r[1]).trim(),
+        store: String(r[2]).trim(),
+        title: r[3] || '',
         fileId: fileId,
-        at: r[4] || '',
-        by: r[5] || '',
-        memo: r[6] || '',
+        at: r[5] || '',
+        by: r[6] || '',
         thumbUrl: 'https://drive.google.com/thumbnail?id=' + fileId + '&sz=w1000',
         downloadUrl: 'https://drive.google.com/uc?export=download&id=' + fileId
       };
@@ -1185,14 +1186,17 @@ function getPosters_(store) {
     .sort((a, b) => (a.at < b.at ? 1 : -1));   // 新しい順
 }
 
-// data = { store, title, image(dataURL), memo, by }
+// data = { ideaId, store, title, image(dataURL), by }
 function addPoster_(data) {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);   // 画像アップロードを含むので長めに
   try {
     data = data || {};
+    const ideaId = String(data.ideaId || '').trim();
+    if (!ideaId) throw new Error('商品が特定できません');
+    if (findIdeaRow_(getIdeaSheet_(), ideaId) < 0) throw new Error('商品が見つかりません: ' + ideaId);
     const store = String(data.store || '').trim();
-    if (!store) throw new Error('店舗を選択してください');
+    if (!store) throw new Error('使った店舗を選択してください');
     if (getStoreList_().every(s => s.name !== store)) throw new Error('存在しない店舗です: ' + store);
     const img = String(data.image || '');
     if (img.indexOf('data:') !== 0) throw new Error('ポスター画像を選択してください');
@@ -1203,10 +1207,10 @@ function addPoster_(data) {
     const rowNum = sh.getLastRow() + 1;
     POSTER_TEXT_COLS.forEach(col => sh.getRange(rowNum, col, 1, 1).setNumberFormat('@'));
     sh.getRange(rowNum, 1, 1, POSTER_HEADERS.length).setValues([[
-      id, store, String(data.title || '').trim(), fileId, nowStr_(),
-      String(data.by || '').trim(), String(data.memo || '').trim()
+      id, ideaId, store, String(data.title || '').trim(), fileId, nowStr_(),
+      String(data.by || '').trim()
     ]]);
-    return getPosters_(store);
+    return getPostersFor_(ideaId);
   } finally {
     lock.releaseLock();
   }
@@ -1222,13 +1226,29 @@ function deletePoster_(id) {
     const rows = sh.getRange(2, 1, lastRow - 1, POSTER_HEADERS.length).getValues();
     const idx = rows.findIndex(r => String(r[0]).trim() === String(id).trim());
     if (idx < 0) throw new Error('ポスターが見つかりません: ' + id);
-    const store = String(rows[idx][1]).trim();
-    const fileId = String(rows[idx][3]).trim();
+    const ideaId = String(rows[idx][1]).trim();
+    const fileId = String(rows[idx][4]).trim();
     sh.deleteRow(idx + 2);
     if (fileId) { try { DriveApp.getFileById(fileId).setTrashed(true); } catch (e) {} }
-    return getPosters_(store);
+    return getPostersFor_(ideaId);
   } finally {
     lock.releaseLock();
+  }
+}
+
+// アイデア削除時に、そのアイデアのポスター行とDriveファイルをまとめて消す
+function deletePostersFor_(ideaId) {
+  const sh = getPosterSheet_();
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return;
+  const rows = sh.getRange(2, 1, lastRow - 1, POSTER_HEADERS.length).getValues();
+  // 下から消す（上から消すと行番号がずれる）
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (String(rows[i][1]).trim() === String(ideaId).trim()) {
+      const fileId = String(rows[i][4]).trim();
+      sh.deleteRow(i + 2);
+      if (fileId) { try { DriveApp.getFileById(fileId).setTrashed(true); } catch (e) {} }
+    }
   }
 }
 
