@@ -2505,6 +2505,38 @@ function md(s){
 function d2i(s){ return String(s||'').replace(/\//g, '-'); }
 function i2d(s){ return String(s||'').replace(/-/g, '/'); }
 
+// ---- 提供期間の既定値 ----
+// 基準日（ユーザー確定）：春2/20〜4/20・夏6/20〜8/20・秋9/1〜10/30・冬11/20〜1/10。
+// 開始は基準日に一番近い水曜、終了は一番近い日曜へ寄せる（全季節共通・月末の特別扱いなし）。
+// [年度オフセット, 月, 日]。冬の終了と春は年度をまたぐのでオフセット1
+var SERVE_DEFAULTS = {
+  '夏': { start: [0, 6, 20],  end: [0, 8, 20] },
+  '秋': { start: [0, 9, 1],   end: [0, 10, 30] },
+  '冬': { start: [0, 11, 20], end: [1, 1, 10] },
+  '春': { start: [1, 2, 20],  end: [1, 4, 20] }
+};
+// d を一番近い指定曜日（dow: 0=日,3=水）へ寄せる。前後3日以内に必ず1つある
+function nearestDow(d, dow){
+  var diff = (dow - d.getDay() + 7) % 7;
+  if(diff > 3) diff -= 7;
+  var r = new Date(d);
+  r.setDate(d.getDate() + diff);
+  return r;
+}
+function dateToStr(d){
+  return d.getFullYear() + '/' + ('0' + (d.getMonth() + 1)).slice(-2) + '/' + ('0' + d.getDate()).slice(-2);
+}
+// 年度＋季節から既定の提供期間を計算する
+function serveDefault(year, season){
+  var def = SERVE_DEFAULTS[season];
+  if(!def) return { start: '', end: '' };
+  var y = Number(year);
+  return {
+    start: dateToStr(nearestDow(new Date(y + def.start[0], def.start[1] - 1, def.start[2]), 3)),
+    end: dateToStr(nearestDow(new Date(y + def.end[0], def.end[1] - 1, def.end[2]), 0))
+  };
+}
+
 // 階層ナビ：PL.season が null なら「春夏秋冬の一覧（タイムライン）」、選択中ならその季節のロードマップ
 function renderPlanView(){
   if(PL.year == null) PL.year = fyOf(D.today);
@@ -2624,10 +2656,16 @@ function renderPlanDetail(){
     h += '<div class="prog" style="margin-bottom:.7rem"><div class="prog-bar"><div class="prog-fill" style="width:' + prog + '%"></div></div>' +
          '<span class="prog-num">' + prog + '%</span></div>';
   }
-  // 日程（提供期間・開発期間）
+  // 日程（提供期間・開発期間）。提供期間が未設定なら既定値（水曜開始・日曜終了）を自動入力しておく
+  var sd = serveDefault(y, s);
+  var vServeS = (p && p.serveStart) || sd.start;
+  var vServeE = (p && p.serveEnd) || sd.end;
+  var prefilled = !(p && p.serveStart) || !(p && p.serveEnd);
   h += '<div class="fgrid c2">' +
        '<div class="f"><label>提供期間（開始〜終了）</label><div style="display:flex;gap:.4rem;align-items:center">' +
-       '<input type="date" id="pd-serveS" value="' + d2i(p && p.serveStart) + '">〜<input type="date" id="pd-serveE" value="' + d2i(p && p.serveEnd) + '"></div></div>' +
+       '<input type="date" id="pd-serveS" value="' + d2i(vServeS) + '">〜<input type="date" id="pd-serveE" value="' + d2i(vServeE) + '"></div>' +
+       (prefilled ? '<div class="hint">既定の期間を入れています（開始=水曜・終了=日曜に自動調整）。「日程を保存」で確定します</div>' : '') +
+       '</div>' +
        '<div class="f"><label>開発・試作（開始〜終了）</label><div style="display:flex;gap:.4rem;align-items:center">' +
        '<input type="date" id="pd-devS" value="' + d2i(p && p.devStart) + '">〜<input type="date" id="pd-devE" value="' + d2i(p && p.devEnd) + '"></div></div>' +
        '</div>' +
