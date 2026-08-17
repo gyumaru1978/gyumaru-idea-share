@@ -160,6 +160,48 @@ img{max-width:100%;display:block}
 .pill{display:inline-block;padding:.16rem .5rem;border-radius:999px;font-size:.68rem;font-weight:700;white-space:nowrap}
 .pill-アイデア{background:#2563eb;color:#fff}
 .pill-採用{background:var(--brand);color:#fff}
+.pill-未着手{background:#e5e7eb;color:#374151}
+.pill-進行中{background:#2563eb;color:#fff}
+.pill-完了{background:var(--brand);color:#fff}
+
+/* ===== 開発計画（年間タイムライン） =====
+   横軸は5月〜翌4月の12ヶ月。季節ごとに1行で、開発期間と提供期間の帯を重ねて描く。
+   位置はJSが年度内の日数割合(%)で計算する。 */
+.tl-months{display:flex;margin-left:5.2rem;border-bottom:1px solid var(--line)}
+.tl-months span{flex:1;font-size:.6rem;color:var(--ink-faint);text-align:left;padding:.15rem 0 .2rem;border-left:1px dotted var(--line)}
+.tl-row{display:flex;align-items:center;gap:0;margin:.45rem 0;cursor:pointer;border-radius:8px}
+.tl-row:hover{background:var(--bg)}
+.tl-row.sel{background:var(--brand-tint)}
+.tl-name{flex:0 0 5.2rem;font-size:.8rem;font-weight:700;padding:.3rem .4rem}
+.tl-name .tl-pct{display:block;font-size:.66rem;font-weight:700;color:var(--brand-dark)}
+.tl-track{flex:1;position:relative;height:2.1rem;background:repeating-linear-gradient(90deg,transparent,transparent calc(100%/12 - 1px),var(--line) calc(100%/12 - 1px),var(--line) calc(100%/12))}
+.tl-band{position:absolute;border-radius:4px}
+.tl-dev{top:.2rem;height:.7rem;background:#a7f3d0;border:1px solid #34d399}
+.tl-serve{bottom:.2rem;height:.7rem;background:var(--brand);opacity:.85}
+.tl-prog{position:absolute;left:0;top:0;bottom:0;background:rgba(4,120,87,.08);border-right:2px solid var(--brand);pointer-events:none}
+.tl-today{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--danger);pointer-events:none}
+.tl-legend{display:flex;gap:1rem;margin-top:.5rem;font-size:.68rem;color:var(--ink-muted);flex-wrap:wrap}
+.tl-legend .tl-i{display:inline-block;width:.85rem;height:.55rem;border-radius:3px;margin-right:.25rem;vertical-align:middle}
+.tl-i-dev{background:#a7f3d0;border:1px solid #34d399}
+.tl-i-serve{background:var(--brand);opacity:.85}
+.tl-i-today{background:var(--danger);width:2px !important;height:.85rem}
+.tl-empty{font-size:.72rem;color:var(--ink-faint);position:absolute;left:.5rem;top:50%;transform:translateY(-50%)}
+
+/* 進捗バー（季節詳細の見出しに出す） */
+.prog{display:flex;align-items:center;gap:.5rem}
+.prog .prog-bar{flex:1;height:.55rem;background:var(--bg);border-radius:999px;overflow:hidden}
+.prog .prog-fill{height:100%;background:var(--brand);border-radius:999px}
+.prog .prog-num{font-size:.78rem;font-weight:800;color:var(--brand-dark);flex:0 0 auto}
+
+/* タスク行（ロードマップ）。マスタ行(.mrow)と同じ操作感＋タップで編集 */
+.trow{display:flex;align-items:center;gap:.5rem;padding:.55rem .5rem;border-bottom:1px solid var(--line);cursor:pointer}
+.trow:hover{background:var(--bg)}
+.trow .tno{flex:0 0 1.4rem;font-size:.78rem;font-weight:800;color:var(--brand-dark);text-align:center}
+.trow .tmain{flex:1;min-width:0}
+.trow .tname{font-size:.86rem;font-weight:700}
+.trow .tsub{font-size:.7rem;color:var(--ink-faint);margin-top:.1rem;display:flex;gap:.5rem;flex-wrap:wrap}
+.trow .tresult{font-size:.72rem;color:var(--ink-muted);margin-top:.15rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trow.done .tname{color:var(--ink-faint);text-decoration:line-through}
 .badge{display:inline-block;padding:.16rem .5rem;border-radius:6px;font-size:.68rem;font-weight:700;background:var(--brand-tint);color:var(--brand-dark);white-space:nowrap}
 .badge-store{background:#eef2ff;color:#4338ca}
 .badge-dept{background:var(--brand-tint);color:var(--brand-dark)}
@@ -380,6 +422,7 @@ img{max-width:100%;display:block}
   <div class="nav-in">
     <button class="nav-btn on" data-view="list">一覧</button>
     <button class="nav-btn" data-view="form">新規登録</button>
+    <button class="nav-btn" data-view="plan">開発計画</button>
     <button class="nav-btn" data-view="master">マスタ</button>
   </div>
 </nav>
@@ -533,6 +576,24 @@ img{max-width:100%;display:block}
 </section>
 
 <!-- ========== マスタ ========== -->
+<!-- ========== 開発計画（季節メニューのタスク管理） ========== -->
+<section id="view-plan" class="hidden">
+  <div class="panel">
+    <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:.6rem">
+      <h3 style="margin:0;padding:0;border:none">年間計画</h3>
+      <select id="planYear" style="padding:.35rem .5rem;border:1px solid var(--line);border-radius:8px;font-size:.85rem"></select>
+    </div>
+    <!-- 横軸は5月〜翌4月。各季節の行に開発期間・提供期間の帯と進捗、今日の位置を描く -->
+    <div id="timeline"></div>
+    <div class="tl-legend">
+      <span><i class="tl-i tl-i-dev"></i>開発・試作</span>
+      <span><i class="tl-i tl-i-serve"></i>提供期間</span>
+      <span><i class="tl-i tl-i-today"></i>今日</span>
+    </div>
+  </div>
+  <div id="planDetail"></div>
+</section>
+
 <section id="view-master" class="hidden">
   <!-- マスタの入口メニュー。ここから各マスタに入る（階層構造。長いスクロールを避ける） -->
   <div id="masterMenu" class="mmenu">
@@ -540,6 +601,7 @@ img{max-width:100%;display:block}
     <button class="mmenu-item" data-mkey="store"><span class="mmenu-t">店舗マスタ</span><span class="mmenu-s" id="mmenu-store"></span><span class="mmenu-arrow">›</span></button>
     <button class="mmenu-item" data-mkey="category"><span class="mmenu-t">カテゴリマスタ</span><span class="mmenu-s" id="mmenu-category"></span><span class="mmenu-arrow">›</span></button>
     <button class="mmenu-item" data-mkey="tag"><span class="mmenu-t">タグマスタ</span><span class="mmenu-s" id="mmenu-tag"></span><span class="mmenu-arrow">›</span></button>
+    <button class="mmenu-item" data-mkey="owner"><span class="mmenu-t">担当マスタ（開発計画）</span><span class="mmenu-s" id="mmenu-owner"></span><span class="mmenu-arrow">›</span></button>
     <button class="mmenu-item" data-mkey="president"><span class="mmenu-t">社長モード</span><span class="mmenu-s" id="mmenu-president"></span><span class="mmenu-arrow">›</span></button>
   </div>
 
@@ -583,6 +645,17 @@ img{max-width:100%;display:block}
     <div class="addrow">
       <input id="tg-name" placeholder="タグ名（例：SNS映え）">
       <button id="tg-add" class="btn btn-primary btn-sm">追加</button>
+    </div>
+  </div>
+  <div class="panel mpanel hidden" data-mkey="owner">
+    <h3>担当マスタ（開発計画）</h3>
+    <p style="font-size:.75rem;color:var(--ink-faint);margin-bottom:.7rem">
+      開発計画のタスクに付ける担当の一覧です（社長・エリアなど）。改名はタスクにも一括反映されます。
+      削除するとタスクからも外れます。</p>
+    <div id="ownerList" class="mlist"></div>
+    <div class="addrow">
+      <input id="ow-name" placeholder="担当名（例：福岡エリア）">
+      <button id="ow-add" class="btn btn-primary btn-sm">追加</button>
     </div>
   </div>
   <div class="panel mpanel hidden" data-mkey="president">
@@ -662,6 +735,29 @@ img{max-width:100%;display:block}
       <button id="mm-del" class="btn btn-danger hidden" style="flex:0 0 auto">削除</button>
       <button class="btn btn-ghost" data-close="mmM">キャンセル</button>
       <button id="mm-save" class="btn btn-primary">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 開発タスク編集モーダル ========== -->
+<div id="taskM" class="mbg hidden">
+  <div class="mbox narrow">
+    <div class="mhead"><h2 id="tk-title">タスクを追加</h2><button class="x" data-close="taskM">✕</button></div>
+    <div class="mbody">
+      <div class="f"><label>タスク名<span class="req">*</span></label><input id="tk-name" placeholder="例：市場調査"></div>
+      <div class="fgrid c2" style="margin-top:.6rem">
+        <div class="f"><label>開始日</label><input id="tk-start" type="date"></div>
+        <div class="f"><label>終了日</label><input id="tk-end" type="date"></div>
+      </div>
+      <div class="f" style="margin-top:.6rem"><label>担当（複数選べます）</label><div class="picks" id="tk-owners"></div></div>
+      <div class="f" style="margin-top:.6rem"><label>状態</label><div class="picks" id="tk-status"></div></div>
+      <div class="f" style="margin-top:.6rem"><label>結果・メモ</label>
+        <textarea id="tk-result" placeholder="例：候補3案に絞った／試食会の評価は○○" style="min-height:4rem"></textarea></div>
+    </div>
+    <div class="mfoot">
+      <button id="tk-del" class="btn btn-danger hidden" style="flex:0 0 auto">削除</button>
+      <button class="btn btn-ghost" data-close="taskM">キャンセル</button>
+      <button id="tk-save" class="btn btn-primary">保存</button>
     </div>
   </div>
 </div>
@@ -930,13 +1026,14 @@ function masterUnitPrice(name){
 // 画面切替
 // ============================================================
 function switchView(name){
-  ['list','form','master'].forEach(function(v){
+  ['list','form','plan','master'].forEach(function(v){
     q('view-' + v).classList.toggle('hidden', v !== name);
   });
   document.querySelectorAll('.nav-btn').forEach(function(b){
     b.classList.toggle('on', b.dataset.view === name);
   });
   if(name === 'master') closeMaster();   // マスタは毎回メニューから始める
+  if(name === 'plan') renderPlanView();
   window.scrollTo(0, 0);
 }
 
@@ -962,6 +1059,7 @@ function renderMasterMenu(){
   if((el = q('mmenu-store'))) el.textContent = (D.stores||[]).length + '件';
   if((el = q('mmenu-category'))) el.textContent = (D.categories||[]).length + '件';
   if((el = q('mmenu-tag'))) el.textContent = (D.tags||[]).length + '件';
+  if((el = q('mmenu-owner'))) el.textContent = (D.owners||[]).length + '件';
   if((el = q('mmenu-president'))) el.textContent = PRES ? '有効中' : '';
 }
 on(q('masterMenu'), 'click', function(e){
@@ -979,7 +1077,7 @@ document.querySelectorAll('[data-close]').forEach(function(b){
   on(b, 'click', function(){ q(b.dataset.close).classList.add('hidden'); });
 });
 // 背景（オーバーレイ）のクリックで閉じる。中身のクリックでは閉じない
-['detail','statusM','mmM'].forEach(function(id){
+['detail','statusM','mmM','taskM'].forEach(function(id){
   on(q(id), 'click', function(e){ if(e.target === q(id)) q(id).classList.add('hidden'); });
 });
 
@@ -995,10 +1093,12 @@ function applyInitialData(data){
   renderCatList();
   renderTagList();
   renderMmList();
+  renderOwnerList();
   renderMaterialDatalist();
   renderPresPanel();
   fillFormSelects();
   render();
+  if(!q('view-plan').classList.contains('hidden')) renderPlanView();
 }
 
 // 材料名 → マスタ obj の索引を作る。原価・栄養・アレルギーの自動計算で毎回引く
@@ -2029,8 +2129,11 @@ function initDragReorder(containerId, action, getList){
   on(container, 'pointercancel', end);
 }
 
-// 画面の並び（names）に配列を合わせ、少し待ってからサーバーへ送る（連続操作をまとめる）
+// 画面の並び（names）に配列を合わせ、少し待ってからサーバーへ送る（連続操作をまとめる）。
+// action は API名の文字列のほか、関数も渡せる（開発タスクのように追加引数が要る並び替え用。
+// 関数の場合は names をそのまま渡して即時呼び出す）。
 function commitReorder(action, list, names){
+  if(typeof action === 'function'){ action(names); return; }
   var by = {};
   list.forEach(function(x){ by[typeof x === 'string' ? x : x.name] = x; });
   var sorted = names.map(function(n){ return by[n]; }).filter(function(x){ return x !== undefined; });
@@ -2261,6 +2364,337 @@ on(q('tg-add'), 'click', function(){
 });
 
 // ============================================================
+// 担当マスタ（開発計画のタスクに付ける。社長・エリアなど）
+// ============================================================
+function renderOwnerList(){
+  var counts = {};
+  (D.devTasks||[]).forEach(function(t){ (t.owners||[]).forEach(function(o){ counts[o] = (counts[o]||0) + 1; }); });
+  var list = D.owners || [];
+  q('ownerList').innerHTML = list.map(function(o, idx){
+    var n = counts[o] || 0;
+    return '<div class="mrow" data-name="' + esc(o) + '">' +
+      ordHtml(idx, list.length) +
+      '<div class="nm">' + esc(o) + '<span class="sub"> ・ ' + (n ? n + '件' : '未使用') + '</span></div>' +
+      '<button class="btn btn-line btn-sm" data-act="rename">編集</button>' +
+      '<button class="btn btn-danger btn-sm" data-act="del">削除</button></div>';
+  }).join('') || '<div class="hint">担当が登録されていません</div>';
+}
+on(q('ownerList'), 'click', function(e){
+  var b = e.target.closest('button');
+  if(!b) return;
+  var name = b.closest('.mrow').dataset.name;
+  if(b.dataset.act === 'rename'){
+    askPrompt('新しい担当名（付いている全タスクに反映されます）', name, function(nn){
+      gsRun('renameOwner', name, nn)
+        .then(function(r){
+          D.owners = r.owners || []; D.devTasks = r.devTasks || [];
+          renderOwnerList(); renderMasterMenu();
+          toast(r.renamed ? '変更しました（' + r.renamed + '件のタスクに反映）' : '変更しました');
+        })
+        .catch(function(err){ toast(errMsg(err), true); });
+    }, { title:'担当名の編集' });
+  }else{
+    askConfirm('担当「' + name + '」を削除しますか？\n付いているタスクからも外れます。', function(){
+      gsRun('deleteOwner', name)
+        .then(function(r){
+          D.owners = r.owners || []; D.devTasks = r.devTasks || [];
+          renderOwnerList(); renderMasterMenu();
+          toast(r.removed ? '削除しました（' + r.removed + '件から除去）' : '削除しました');
+        })
+        .catch(function(err){ toast(errMsg(err), true); });
+    });
+  }
+});
+on(q('ow-add'), 'click', function(){
+  var name = q('ow-name').value.trim();
+  if(!name){ toast('担当名を入力してください', true); return; }
+  gsRun('addOwner', name)
+    .then(function(list){ q('ow-name').value = ''; D.owners = list || []; renderOwnerList(); renderMasterMenu(); toast('追加しました'); })
+    .catch(function(e){ toast(errMsg(e), true); });
+});
+
+// ============================================================
+// 開発計画（年間タイムライン＋季節ごとのロードマップ）
+// ============================================================
+// 年度は5月始まり（2026年度＝2026/5/1〜2027/4/30）。ユーザー確認済みの区切り。
+var PL = { year: null, season: null };   // いま開いている年度・季節
+var TK_EDIT = null;                      // 編集中のタスクID（null=新規）
+var TK_OWNERS = [];                      // タスクモーダルで選択中の担当
+var TK_STATUS = '未着手';
+
+// 'yyyy/MM/dd' → Date（不正なら null）
+function pdate(s){
+  var m = String(s||'').match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+  if(!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+// 今日の日付文字列から年度を出す（5月始まり）
+function fyOf(dstr){
+  var d = pdate(dstr) || new Date();
+  return d.getMonth() + 1 >= 5 ? d.getFullYear() : d.getFullYear() - 1;
+}
+// 今日の月からいま考えるべき季節を出す（3-5月=春, 6-8月=夏, 9-11月=秋, 12-2月=冬）
+function seasonDefault(){
+  var m = (pdate(D.today) || new Date()).getMonth() + 1;
+  if(m >= 3 && m <= 5) return '春';
+  if(m >= 6 && m <= 8) return '夏';
+  if(m >= 9 && m <= 11) return '秋';
+  return '冬';
+}
+function planOf(year, season){
+  return (D.plans||[]).filter(function(p){ return String(p.year) === String(year) && p.season === season; })[0] || null;
+}
+function tasksOf(planId){
+  if(!planId) return [];
+  return (D.devTasks||[]).filter(function(t){ return t.planId === planId; });
+}
+// 進捗%（完了=1・進行中=0.5）。タスクが無ければ null
+function progressOf(tasks){
+  if(!tasks || !tasks.length) return null;
+  var pt = 0;
+  tasks.forEach(function(t){ pt += t.status === '完了' ? 1 : (t.status === '進行中' ? .5 : 0); });
+  return Math.round(pt / tasks.length * 100);
+}
+// 年度内の位置（%）。年度の外は 0〜100 に丸める
+function pctX(year, dstr){
+  var d = pdate(dstr);
+  if(!d) return null;
+  var start = new Date(Number(year), 4, 1);          // 5/1
+  var end = new Date(Number(year) + 1, 4, 1);        // 翌5/1
+  var p = (d - start) / (end - start) * 100;
+  return Math.max(0, Math.min(100, p));
+}
+// 'yyyy/MM/dd' → 'M/d'（表示用）
+function md(s){
+  var d = pdate(s);
+  return d ? (d.getMonth() + 1) + '/' + d.getDate() : '';
+}
+// <input type="date"> の値(yyyy-MM-dd) ⇔ 保存形式(yyyy/MM/dd)
+function d2i(s){ return String(s||'').replace(/\//g, '-'); }
+function i2d(s){ return String(s||'').replace(/-/g, '/'); }
+
+function renderPlanView(){
+  if(PL.year == null) PL.year = fyOf(D.today);
+  if(PL.season == null) PL.season = seasonDefault();
+  // 年度の選択肢：登録済みの計画の年度＋今年度＋来年度
+  var years = {};
+  (D.plans||[]).forEach(function(p){ if(/^\d{4}$/.test(p.year)) years[p.year] = 1; });
+  years[fyOf(D.today)] = 1;
+  years[fyOf(D.today) + 1] = 1;
+  years[PL.year] = 1;
+  var list = Object.keys(years).map(Number).sort(function(a,b){ return a - b; });
+  q('planYear').innerHTML = list.map(function(y){
+    return '<option value="' + y + '"' + (y === Number(PL.year) ? ' selected' : '') + '>' +
+      y + '年度（' + y + '/5〜' + (y + 1) + '/4）</option>';
+  }).join('');
+  renderTimeline();
+  renderPlanDetail();
+}
+
+function renderTimeline(){
+  var y = Number(PL.year);
+  var months = [5,6,7,8,9,10,11,12,1,2,3,4];
+  var h = '<div class="tl-months">' + months.map(function(m){ return '<span>' + m + '月</span>'; }).join('') + '</div>';
+  var todayPct = pctX(y, D.today);
+  (D.seasons||['春','夏','秋','冬']).forEach(function(s){
+    var p = planOf(y, s);
+    var tasks = tasksOf(p && p.id);
+    var prog = progressOf(tasks);
+    h += '<div class="tl-row' + (PL.season === s ? ' sel' : '') + '" data-season="' + s + '">' +
+         '<div class="tl-name">' + s + (prog != null ? '<span class="tl-pct">' + prog + '%</span>' : '') + '</div>' +
+         '<div class="tl-track">';
+    var hasBand = false;
+    if(p){
+      var ds = pctX(y, p.devStart), de = pctX(y, p.devEnd);
+      if(ds != null && de != null && de >= ds){
+        h += '<div class="tl-band tl-dev" style="left:' + ds.toFixed(2) + '%;width:' + Math.max(de - ds, .8).toFixed(2) + '%"></div>';
+        hasBand = true;
+      }
+      var ss = pctX(y, p.serveStart), se = pctX(y, p.serveEnd);
+      if(ss != null && se != null && se >= ss){
+        h += '<div class="tl-band tl-serve" style="left:' + ss.toFixed(2) + '%;width:' + Math.max(se - ss, .8).toFixed(2) + '%"></div>';
+        hasBand = true;
+      }
+      // 実績の目安：開発期間の帯に進捗%ぶんの薄い色を重ねる（どこまで来たかの見当）
+      if(prog != null && ds != null && de != null && de >= ds){
+        h += '<div class="tl-prog" style="left:' + ds.toFixed(2) + '%;width:' + ((de - ds) * prog / 100).toFixed(2) + '%"></div>';
+      }
+    }
+    if(!hasBand) h += '<span class="tl-empty">日程未設定（タップして設定）</span>';
+    if(todayPct != null && todayPct > 0 && todayPct < 100){
+      h += '<div class="tl-today" style="left:' + todayPct.toFixed(2) + '%"></div>';
+    }
+    h += '</div></div>';
+  });
+  q('timeline').innerHTML = h;
+}
+
+on(q('planYear'), 'change', function(){
+  PL.year = Number(q('planYear').value);
+  renderPlanView();
+});
+on(q('timeline'), 'click', function(e){
+  var row = e.target.closest('.tl-row');
+  if(!row) return;
+  PL.season = row.dataset.season;
+  renderPlanView();
+});
+
+function renderPlanDetail(){
+  var y = Number(PL.year), s = PL.season;
+  var p = planOf(y, s);
+  var tasks = tasksOf(p && p.id);
+  var prog = progressOf(tasks);
+  var h = '<div class="panel">';
+  h += '<h3>' + esc(s) + 'メニュー ' + y + '年度</h3>';
+  if(prog != null){
+    h += '<div class="prog" style="margin-bottom:.7rem"><div class="prog-bar"><div class="prog-fill" style="width:' + prog + '%"></div></div>' +
+         '<span class="prog-num">' + prog + '%</span></div>';
+  }
+  // 日程（提供期間・開発期間）
+  h += '<div class="fgrid c2">' +
+       '<div class="f"><label>提供期間（開始〜終了）</label><div style="display:flex;gap:.4rem;align-items:center">' +
+       '<input type="date" id="pd-serveS" value="' + d2i(p && p.serveStart) + '">〜<input type="date" id="pd-serveE" value="' + d2i(p && p.serveEnd) + '"></div></div>' +
+       '<div class="f"><label>開発・試作（開始〜終了）</label><div style="display:flex;gap:.4rem;align-items:center">' +
+       '<input type="date" id="pd-devS" value="' + d2i(p && p.devStart) + '">〜<input type="date" id="pd-devE" value="' + d2i(p && p.devEnd) + '"></div></div>' +
+       '</div>' +
+       '<div class="f" style="margin-top:.6rem"><label>メモ</label><input id="pd-memo" value="' + esc(p && p.memo || '') + '" placeholder="例：3メニュー開発。テーマは○○"></div>' +
+       '<button id="pd-save" class="btn btn-line btn-sm" style="margin-top:.6rem">日程を保存</button>';
+  h += '</div>';
+
+  // ロードマップ（タスク一覧）
+  h += '<div class="panel"><h3>ロードマップ（タスク）</h3>';
+  if(tasks.length){
+    h += '<div id="taskList" class="mlist">';
+    tasks.forEach(function(t, idx){
+      var period = (t.start || t.end) ? (md(t.start) + '〜' + md(t.end)) : '期間未設定';
+      h += '<div class="mrow trow' + (t.status === '完了' ? ' done' : '') + '" data-name="' + esc(t.id) + '">' +
+        ordHtml(idx, tasks.length) +
+        '<div class="tno">' + (idx + 1) + '</div>' +
+        '<div class="tmain">' +
+          '<div class="tname">' + esc(t.name) + '</div>' +
+          '<div class="tsub"><span>' + period + '</span>' +
+            ((t.owners||[]).length ? '<span>' + t.owners.map(esc).join('・') + '</span>' : '') + '</div>' +
+          (t.result ? '<div class="tresult">' + esc(t.result) + '</div>' : '') +
+        '</div>' +
+        '<span class="pill pill-' + esc(t.status) + '">' + esc(t.status) + '</span></div>';
+    });
+    h += '</div>';
+  }else{
+    h += '<div class="hint" style="margin-bottom:.5rem">まだタスクがありません。「①市場調査」のように工程を追加していきます。</div>';
+  }
+  h += '<button id="tk-addBtn" class="btn btn-primary btn-sm" style="margin-top:.6rem">＋ タスクを追加</button></div>';
+
+  q('planDetail').innerHTML = h;
+  // タスクの並び替え（ドラッグ）。names にはタスクIDが入る
+  initDragReorder('taskList', function(ids){
+    var by = {};
+    tasks.forEach(function(t){ by[t.id] = t; });
+    var planId = p && p.id;
+    if(!planId) return;
+    // 画面を先に並び替えて描き直し、サーバーへ反映
+    var sorted = ids.map(function(id){ return by[id]; }).filter(Boolean);
+    sorted.forEach(function(t, i){ t.order = i + 1; });
+    D.devTasks.sort(function(a, b){ return a.order - b.order; });
+    renderPlanDetail();
+    gsRun('reorderDevTasks', planId, ids)
+      .then(function(r){ D.devTasks = r.devTasks || []; })
+      .catch(function(e){ toast(errMsg(e), true); return reload(); });
+  }, function(){ return []; });
+}
+
+on(q('planDetail'), 'click', function(e){
+  var t = e.target;
+  if(t.id === 'pd-save'){
+    t.disabled = true;
+    gsRun('savePlan', {
+      year: String(PL.year), season: PL.season,
+      serveStart: i2d(q('pd-serveS').value), serveEnd: i2d(q('pd-serveE').value),
+      devStart: i2d(q('pd-devS').value), devEnd: i2d(q('pd-devE').value),
+      memo: q('pd-memo').value
+    }).then(function(r){
+      D.plans = r.plans || [];
+      renderTimeline(); renderPlanDetail();
+      toast('保存しました');
+    }).catch(function(err){ t.disabled = false; toast(errMsg(err), true); });
+    return;
+  }
+  if(t.id === 'tk-addBtn'){ openTaskModal(null); return; }
+  var row = e.target.closest('.trow');
+  if(row && !e.target.closest('.drag-handle')) openTaskModal(row.dataset.name);
+});
+
+// ---- タスクの追加・編集モーダル ----
+function openTaskModal(taskId){
+  TK_EDIT = taskId || null;
+  var t = TK_EDIT ? (D.devTasks||[]).filter(function(x){ return x.id === TK_EDIT; })[0] : null;
+  q('tk-title').textContent = t ? 'タスクを編集' : 'タスクを追加（' + PL.season + ' ' + PL.year + '年度）';
+  q('tk-name').value = t ? t.name : '';
+  q('tk-start').value = d2i(t && t.start);
+  q('tk-end').value = d2i(t && t.end);
+  q('tk-result').value = t ? t.result : '';
+  TK_OWNERS = t ? (t.owners||[]).slice() : [];
+  TK_STATUS = t ? t.status : '未着手';
+  renderTkPicks();
+  q('tk-del').classList.toggle('hidden', !t);
+  q('taskM').classList.remove('hidden');
+}
+function renderTkPicks(){
+  q('tk-owners').innerHTML = (D.owners||[]).map(function(o){
+    return '<button type="button" class="pick' + (TK_OWNERS.indexOf(o) >= 0 ? ' on' : '') + '" data-o="' + esc(o) + '">' + esc(o) + '</button>';
+  }).join('') || '<span class="hint">担当マスタが空です（マスタ画面で追加できます）</span>';
+  q('tk-status').innerHTML = (D.taskStatusOptions||['未着手','進行中','完了']).map(function(s){
+    return '<button type="button" class="pick' + (TK_STATUS === s ? ' on' : '') + '" data-s="' + esc(s) + '">' + esc(s) + '</button>';
+  }).join('');
+}
+on(q('tk-owners'), 'click', function(e){
+  var b = e.target.closest('.pick');
+  if(!b) return;
+  var o = b.dataset.o;
+  var i = TK_OWNERS.indexOf(o);
+  if(i >= 0) TK_OWNERS.splice(i, 1); else TK_OWNERS.push(o);
+  renderTkPicks();
+});
+on(q('tk-status'), 'click', function(e){
+  var b = e.target.closest('.pick');
+  if(!b) return;
+  TK_STATUS = b.dataset.s;
+  renderTkPicks();
+});
+on(q('tk-save'), 'click', function(){
+  var name = q('tk-name').value.trim();
+  if(!name){ toast('タスク名を入力してください', true); return; }
+  var data = {
+    year: String(PL.year), season: PL.season, name: name,
+    start: i2d(q('tk-start').value), end: i2d(q('tk-end').value),
+    owners: TK_OWNERS.slice(), status: TK_STATUS, result: q('tk-result').value
+  };
+  var btn = q('tk-save');
+  btn.disabled = true; btn.textContent = '保存中…';
+  (TK_EDIT ? gsRun('updateDevTask', TK_EDIT, data) : gsRun('addDevTask', data))
+    .then(function(r){
+      D.plans = r.plans || D.plans; D.devTasks = r.devTasks || [];
+      q('taskM').classList.add('hidden');
+      renderTimeline(); renderPlanDetail(); renderOwnerList();
+      toast('保存しました');
+    })
+    .catch(function(e){ toast(errMsg(e), true); })
+    .then(function(){ btn.disabled = false; btn.textContent = '保存'; });
+});
+on(q('tk-del'), 'click', function(){
+  if(!TK_EDIT) return;
+  var id = TK_EDIT;
+  askConfirm('このタスクを削除しますか？', function(){
+    gsRun('deleteDevTask', id).then(function(r){
+      D.plans = r.plans || D.plans; D.devTasks = r.devTasks || [];
+      q('taskM').classList.add('hidden');
+      renderTimeline(); renderPlanDetail(); renderOwnerList();
+      toast('削除しました');
+    }).catch(function(e){ toast(errMsg(e), true); });
+  });
+});
+
+// ============================================================
 // ポスター（商品ごと・店舗ラベル付き）
 // ============================================================
 // 編集フォームのポスター欄。完成イメージと同じく、新規登録中でも先に選んでおける。
@@ -2433,6 +2867,7 @@ on(q('gateInput'), 'keydown', function(e){
   initDragReorder('storeList', 'reorderStores', function(){ return D.stores; });
   initDragReorder('catList', 'reorderCategories', function(){ return D.categories; });
   initDragReorder('tagList', 'reorderTags', function(){ return D.tags; });
+  initDragReorder('ownerList', 'reorderOwners', function(){ return D.owners; });
   var saved = lsGet(LS_PASSCODE);
   if(saved){
     q('gateMsg').textContent = '読み込み中…';

@@ -68,6 +68,9 @@ const CATEGORY_SHEET_NAME = 'カテゴリ';
 const TAG_SHEET_NAME      = 'タグ';
 const COMMENT_SHEET_NAME  = 'コメント';
 const POSTER_SHEET_NAME   = 'ポスター';
+const PLAN_SHEET_NAME     = '開発計画';
+const DEVTASK_SHEET_NAME  = '開発タスク';
+const OWNER_SHEET_NAME    = '担当';
 const PHOTO_FOLDER_NAME   = '新商品アイデア_写真';
 const POSTER_FOLDER_NAME  = '新商品アイデア_ポスター';
 
@@ -204,6 +207,29 @@ const TAG_SEED = [
 const STORE_SEED    = [['嬉野本店', 1], ['武雄店', 2]];
 const CATEGORY_SEED = ['惣菜', 'デザート', '弁当・丼', 'パン', '麺', '季節限定', '新食材', 'リニューアル'];
 
+// ============================================================
+// 開発計画（季節メニューのタスク管理）
+// ============================================================
+// 「年度×季節」で1つの計画（例：2026年度の春）。年度は5月始まり（2026年度＝2026/5〜2027/4）。
+// 計画に提供期間・開発期間を持たせ、タスク（工程）をぶら下げる。
+// 進捗はタスクの状態（完了=1・進行中=0.5）から自動計算し、別途は保存しない。
+const PLAN_HEADERS   = ['計画ID', '年度', '季節', '提供開始', '提供終了', '開発開始', '開発終了', 'メモ', '更新日時'];
+const PLAN_TEXT_COLS = [1, 2, 3, 4, 5, 6, 7, 8, 9];   // 日付はすべて yyyy/MM/dd の文字列
+const PLAN_COL = { id: 1, year: 2, season: 3, serveStart: 4, serveEnd: 5, devStart: 6, devEnd: 7, memo: 8, updatedAt: 9 };
+
+const DEVTASK_HEADERS   = ['タスクID', '計画ID', '表示順', 'タスク名', '開始日', '終了日', '担当', '状態', '結果', '更新日時'];
+const DEVTASK_TEXT_COLS = [1, 2, 4, 5, 6, 7, 8, 9, 10];   // 表示順(3)だけ数値
+const DEVTASK_COL = { id: 1, planId: 2, order: 3, name: 4, start: 5, end: 6, owners: 7, status: 8, result: 9, updatedAt: 10 };
+
+const SEASONS = ['春', '夏', '秋', '冬'];
+const TASK_STATUS_OPTIONS = ['未着手', '進行中', '完了'];
+const TASK_STATUS_DEFAULT = '未着手';
+
+// タスクの担当マスタ。店舗マスタとは別物（エリアや社長など、店舗より粗い単位で持つ）。
+// 顔ぶれはよく変わる想定なので、マスタ画面から追加・改名・削除・並び替え自由。
+const OWNER_HEADER = '担当名';
+const OWNER_SEED   = ['社長', '長崎エリア', '佐賀エリア', '福岡エリア'];
+
 function doGet(e) {
   return HtmlService.createHtmlOutputFromFile('index')
     .setTitle('新商品アイデア共有')
@@ -248,6 +274,15 @@ function apiCall(passcode, action, args) {
     case 'renameCategory':   return renameCategory_(args[0], args[1]);
     case 'deleteCategory':   return deleteCategory_(args[0]);
     case 'reorderCategories':return reorderCategories_(args[0]);
+    case 'savePlan':         return savePlan_(args[0]);
+    case 'addDevTask':       return addDevTask_(args[0]);
+    case 'updateDevTask':    return updateDevTask_(args[0], args[1]);
+    case 'deleteDevTask':    return deleteDevTask_(args[0]);
+    case 'reorderDevTasks':  return reorderDevTasks_(args[0], args[1]);
+    case 'addOwner':         return addOwner_(args[0]);
+    case 'renameOwner':      return renameOwner_(args[0], args[1]);
+    case 'deleteOwner':      return deleteOwner_(args[0]);
+    case 'reorderOwners':    return reorderOwners_(args[0]);
     default: throw new Error('不正な操作です: ' + action);
   }
 }
@@ -484,6 +519,37 @@ function getCommentSheet_() {
   return sh;
 }
 
+function getPlanSheet_() {
+  const ss = getSpreadsheet_();
+  let sh = ss.getSheetByName(PLAN_SHEET_NAME);
+  if (!sh) {
+    sh = ss.insertSheet(PLAN_SHEET_NAME);
+    initSheet_(sh, PLAN_HEADERS, PLAN_TEXT_COLS, 500);
+  }
+  return sh;
+}
+
+function getDevTaskSheet_() {
+  const ss = getSpreadsheet_();
+  let sh = ss.getSheetByName(DEVTASK_SHEET_NAME);
+  if (!sh) {
+    sh = ss.insertSheet(DEVTASK_SHEET_NAME);
+    initSheet_(sh, DEVTASK_HEADERS, DEVTASK_TEXT_COLS, 2000);
+  }
+  return sh;
+}
+
+function getOwnerSheet_() {
+  const ss = getSpreadsheet_();
+  let sh = ss.getSheetByName(OWNER_SHEET_NAME);
+  if (!sh) {
+    sh = ss.insertSheet(OWNER_SHEET_NAME);
+    initSheet_(sh, [OWNER_HEADER], [1], 200);
+    sh.getRange(2, 1, OWNER_SEED.length, 1).setValues(OWNER_SEED.map(o => [o]));
+  }
+  return sh;
+}
+
 // ============================================================
 // 初期データ取得
 // ============================================================
@@ -512,6 +578,11 @@ function getInitialData_() {
     yieldUnitOptions: YIELD_UNIT_OPTIONS,
     allergenOptions: ALLERGEN_OPTIONS,
     storageOptions: STORAGE_OPTIONS,
+    plans: getPlanList_(),
+    devTasks: getDevTaskList_(),
+    owners: getOwnerList_(),
+    seasons: SEASONS,
+    taskStatusOptions: TASK_STATUS_OPTIONS,
     today: todayStr_()
   };
 }
@@ -1763,4 +1834,317 @@ function extractFileId_(url) {
   if (!url) return null;
   const m = String(url).match(/[?&]id=([^&]+)/);
   return m ? m[1] : null;
+}
+
+// ============================================================
+// 開発計画（季節メニューのタスク管理）
+// ============================================================
+// 「年度×季節」で1計画。年度は5月始まり（2026年度＝2026/5〜2027/4）。
+// 進捗はタスクの状態から画面側で自動計算する（シートには保存しない）。
+
+function getPlanList_() {
+  const sh = getPlanSheet_();
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return [];
+  return sh.getRange(2, 1, lastRow - 1, PLAN_HEADERS.length).getValues()
+    .filter(r => String(r[0]).trim() !== '')
+    .map(r => ({
+      id: String(r[PLAN_COL.id - 1]),
+      year: String(r[PLAN_COL.year - 1]),
+      season: String(r[PLAN_COL.season - 1]),
+      serveStart: String(r[PLAN_COL.serveStart - 1] || ''),
+      serveEnd: String(r[PLAN_COL.serveEnd - 1] || ''),
+      devStart: String(r[PLAN_COL.devStart - 1] || ''),
+      devEnd: String(r[PLAN_COL.devEnd - 1] || ''),
+      memo: String(r[PLAN_COL.memo - 1] || '')
+    }));
+}
+
+function getDevTaskList_() {
+  const sh = getDevTaskSheet_();
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return [];
+  return sh.getRange(2, 1, lastRow - 1, DEVTASK_HEADERS.length).getValues()
+    .filter(r => String(r[0]).trim() !== '')
+    .map(r => ({
+      id: String(r[DEVTASK_COL.id - 1]),
+      planId: String(r[DEVTASK_COL.planId - 1]),
+      order: numOrZero_(r[DEVTASK_COL.order - 1]),
+      name: String(r[DEVTASK_COL.name - 1] || ''),
+      start: String(r[DEVTASK_COL.start - 1] || ''),
+      end: String(r[DEVTASK_COL.end - 1] || ''),
+      owners: splitList_(r[DEVTASK_COL.owners - 1]),
+      status: String(r[DEVTASK_COL.status - 1] || TASK_STATUS_DEFAULT),
+      result: String(r[DEVTASK_COL.result - 1] || '')
+    }))
+    .sort((a, b) => (a.order - b.order));
+}
+
+function getOwnerList_() {
+  const sh = getOwnerSheet_();
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return [];
+  return sh.getRange(2, 1, lastRow - 1, 1).getValues()
+    .map(r => String(r[0]).trim())
+    .filter(v => v !== '');
+}
+
+// 計画ID・タスクIDの採番。既存IDの最大値+1（P0001 / T0001 形式）
+function nextPrefixedId_(sh, col, prefix) {
+  const lastRow = sh.getLastRow();
+  let max = 0;
+  if (lastRow >= 2) {
+    sh.getRange(2, col, lastRow - 1, 1).getValues().forEach(r => {
+      const m = String(r[0]).match(new RegExp('^' + prefix + '(\\d+)$'));
+      if (m) max = Math.max(max, Number(m[1]));
+    });
+  }
+  return prefix + ('0000' + (max + 1)).slice(-4);
+}
+
+// 年度＋季節の計画行を返す（無ければ作る）。タスク追加時に日程未設定でも困らないように。
+function ensurePlan_(year, season) {
+  const y = String(year || '').trim();
+  const s = String(season || '').trim();
+  if (!/^\d{4}$/.test(y)) throw new Error('年度が不正です: ' + year);
+  if (SEASONS.indexOf(s) < 0) throw new Error('季節が不正です: ' + season);
+  const sh = getPlanSheet_();
+  const lastRow = sh.getLastRow();
+  if (lastRow >= 2) {
+    const rows = sh.getRange(2, 1, lastRow - 1, PLAN_HEADERS.length).getValues();
+    for (let i = 0; i < rows.length; i++) {
+      if (String(rows[i][PLAN_COL.year - 1]) === y && String(rows[i][PLAN_COL.season - 1]) === s) {
+        return { rowNum: i + 2, id: String(rows[i][PLAN_COL.id - 1]) };
+      }
+    }
+  }
+  const id = nextPrefixedId_(sh, PLAN_COL.id, 'P');
+  const rowNum = sh.getLastRow() + 1;
+  const row = new Array(PLAN_HEADERS.length).fill('');
+  row[PLAN_COL.id - 1] = id;
+  row[PLAN_COL.year - 1] = y;
+  row[PLAN_COL.season - 1] = s;
+  row[PLAN_COL.updatedAt - 1] = nowStr_();
+  sh.getRange(rowNum, 1, 1, PLAN_HEADERS.length).setNumberFormat('@');
+  sh.getRange(rowNum, 1, 1, PLAN_HEADERS.length).setValues([row]);
+  return { rowNum: rowNum, id: id };
+}
+
+// 計画（日程・メモ）の保存。year+season で行を特定し、上書き（無ければ新規作成）。
+// data = { year, season, serveStart, serveEnd, devStart, devEnd, memo }
+function savePlan_(data) {
+  data = data || {};
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const found = ensurePlan_(data.year, data.season);
+    const sh = getPlanSheet_();
+    const row = sh.getRange(found.rowNum, 1, 1, PLAN_HEADERS.length).getValues()[0];
+    row[PLAN_COL.serveStart - 1] = dateStrOrEmpty_(data.serveStart);
+    row[PLAN_COL.serveEnd - 1] = dateStrOrEmpty_(data.serveEnd);
+    row[PLAN_COL.devStart - 1] = dateStrOrEmpty_(data.devStart);
+    row[PLAN_COL.devEnd - 1] = dateStrOrEmpty_(data.devEnd);
+    row[PLAN_COL.memo - 1] = String(data.memo || '');
+    row[PLAN_COL.updatedAt - 1] = nowStr_();
+    sh.getRange(found.rowNum, 1, 1, PLAN_HEADERS.length).setNumberFormat('@');
+    sh.getRange(found.rowNum, 1, 1, PLAN_HEADERS.length).setValues([row]);
+    return { plans: getPlanList_() };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// 'yyyy/MM/dd' 形式だけ通す。<input type="date"> の 'yyyy-MM-dd' も受けて変換する
+function dateStrOrEmpty_(v) {
+  const s = String(v == null ? '' : v).trim().replace(/-/g, '/');
+  if (!s) return '';
+  if (!/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(s)) return '';
+  const p = s.split('/');
+  return p[0] + '/' + ('0' + p[1]).slice(-2) + '/' + ('0' + p[2]).slice(-2);
+}
+
+// タスク追加。data = { year, season, name, start, end, owners[], status, result }
+function addDevTask_(data) {
+  data = data || {};
+  const name = String(data.name || '').trim();
+  if (!name) throw new Error('タスク名を入力してください');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const plan = ensurePlan_(data.year, data.season);
+    const sh = getDevTaskSheet_();
+    const maxOrder = getDevTaskList_().filter(t => t.planId === plan.id)
+      .reduce((m, t) => Math.max(m, t.order), 0);
+    const id = nextPrefixedId_(sh, DEVTASK_COL.id, 'T');
+    const rowNum = sh.getLastRow() + 1;
+    const row = new Array(DEVTASK_HEADERS.length).fill('');
+    row[DEVTASK_COL.id - 1] = id;
+    row[DEVTASK_COL.planId - 1] = plan.id;
+    row[DEVTASK_COL.order - 1] = maxOrder + 1;
+    row[DEVTASK_COL.name - 1] = name;
+    row[DEVTASK_COL.start - 1] = dateStrOrEmpty_(data.start);
+    row[DEVTASK_COL.end - 1] = dateStrOrEmpty_(data.end);
+    row[DEVTASK_COL.owners - 1] = joinList_(data.owners);
+    row[DEVTASK_COL.status - 1] = TASK_STATUS_OPTIONS.indexOf(data.status) >= 0 ? data.status : TASK_STATUS_DEFAULT;
+    row[DEVTASK_COL.result - 1] = String(data.result || '');
+    row[DEVTASK_COL.updatedAt - 1] = nowStr_();
+    DEVTASK_TEXT_COLS.forEach(col => sh.getRange(rowNum, col, 1, 1).setNumberFormat('@'));
+    sh.getRange(rowNum, 1, 1, DEVTASK_HEADERS.length).setValues([row]);
+    return { plans: getPlanList_(), devTasks: getDevTaskList_() };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function findDevTaskRow_(sh, id) {
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return -1;
+  const vals = sh.getRange(2, DEVTASK_COL.id, lastRow - 1, 1).getValues();
+  for (let i = 0; i < vals.length; i++) {
+    if (String(vals[i][0]) === String(id)) return i + 2;
+  }
+  return -1;
+}
+
+function updateDevTask_(taskId, data) {
+  data = data || {};
+  const name = String(data.name || '').trim();
+  if (!name) throw new Error('タスク名を入力してください');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const sh = getDevTaskSheet_();
+    const rowNum = findDevTaskRow_(sh, taskId);
+    if (rowNum < 0) throw new Error('タスクが見つかりません: ' + taskId);
+    const row = sh.getRange(rowNum, 1, 1, DEVTASK_HEADERS.length).getValues()[0];
+    row[DEVTASK_COL.name - 1] = name;
+    row[DEVTASK_COL.start - 1] = dateStrOrEmpty_(data.start);
+    row[DEVTASK_COL.end - 1] = dateStrOrEmpty_(data.end);
+    row[DEVTASK_COL.owners - 1] = joinList_(data.owners);
+    row[DEVTASK_COL.status - 1] = TASK_STATUS_OPTIONS.indexOf(data.status) >= 0 ? data.status : TASK_STATUS_DEFAULT;
+    row[DEVTASK_COL.result - 1] = String(data.result || '');
+    row[DEVTASK_COL.updatedAt - 1] = nowStr_();
+    DEVTASK_TEXT_COLS.forEach(col => sh.getRange(rowNum, col, 1, 1).setNumberFormat('@'));
+    sh.getRange(rowNum, 1, 1, DEVTASK_HEADERS.length).setValues([row]);
+    return { plans: getPlanList_(), devTasks: getDevTaskList_() };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function deleteDevTask_(taskId) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const sh = getDevTaskSheet_();
+    const rowNum = findDevTaskRow_(sh, taskId);
+    if (rowNum < 0) throw new Error('タスクが見つかりません: ' + taskId);
+    sh.deleteRow(rowNum);
+    return { plans: getPlanList_(), devTasks: getDevTaskList_() };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// 並び替え。taskIds の順に「表示順」を1..Nで振り直す（他計画のタスクは触らない）
+function reorderDevTasks_(planId, taskIds) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const sh = getDevTaskSheet_();
+    const lastRow = sh.getLastRow();
+    if (lastRow < 2) return { devTasks: [] };
+    const pos = {};
+    (taskIds || []).forEach((id, i) => { pos[String(id)] = i + 1; });
+    const rows = sh.getRange(2, 1, lastRow - 1, DEVTASK_HEADERS.length).getValues();
+    rows.forEach((r, i) => {
+      if (String(r[DEVTASK_COL.planId - 1]) !== String(planId)) return;
+      const p = pos[String(r[DEVTASK_COL.id - 1])];
+      if (p === undefined) return;   // 画面に無いタスク（同時追加など）は順序を変えない
+      sh.getRange(i + 2, DEVTASK_COL.order, 1, 1).setValues([[p]]);
+    });
+    return { devTasks: getDevTaskList_() };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ---- 担当マスタ ----
+function addOwner_(name) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const trimmed = validateMasterName_(name, '担当名');
+    if (getOwnerList_().indexOf(trimmed) >= 0) throw new Error('同じ名前の担当が既にあります');
+    const sh = getOwnerSheet_();
+    const rowNum = sh.getLastRow() + 1;
+    sh.getRange(rowNum, 1, 1, 1).setNumberFormat('@');
+    sh.getRange(rowNum, 1, 1, 1).setValues([[trimmed]]);
+    return getOwnerList_();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// 改名はマスタと、その担当が付いた全タスクの両方を書き換える
+function renameOwner_(oldName, newName) {
+  const from = String(oldName).trim();
+  const to = validateMasterName_(newName, '担当名');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    renameInMasterColumn_(getOwnerSheet_(), from, to);
+    return { renamed: rewriteOwnerColumn_(from, to), owners: getOwnerList_(), devTasks: getDevTaskList_() };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// 担当は使用中でも削除できる（タスクからも外れる）。顔ぶれがよく変わる前提のため
+function deleteOwner_(name) {
+  const target = String(name).trim();
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    deleteFromMasterColumn_(getOwnerSheet_(), target);
+    return { removed: rewriteOwnerColumn_(target, null), owners: getOwnerList_(), devTasks: getDevTaskList_() };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function reorderOwners_(names) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    reorderMasterRows_(getOwnerSheet_(), [OWNER_HEADER], [1], names, 0);
+    return getOwnerList_();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// 開発タスクの「担当」列（カンマ区切り）の中の target を newName に置換（null で削除）。
+// 変更した行数を返す。アイデアのタグ列に対する rewriteListColumn_ の開発タスク版。
+function rewriteOwnerColumn_(target, newName) {
+  const sh = getDevTaskSheet_();
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return 0;
+  const range = sh.getRange(2, DEVTASK_COL.owners, lastRow - 1, 1);
+  const values = range.getValues();
+  let count = 0;
+  values.forEach(r => {
+    const items = splitList_(r[0]);
+    if (items.indexOf(target) < 0) return;
+    const next = newName === null
+      ? items.filter(x => x !== target)
+      : items.map(x => (x === target ? newName : x));
+    r[0] = joinList_(next);
+    count++;
+  });
+  if (count) {
+    range.setNumberFormat('@');
+    range.setValues(values);
+  }
+  return count;
 }
