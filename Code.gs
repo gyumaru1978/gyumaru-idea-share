@@ -71,6 +71,7 @@ const POSTER_SHEET_NAME   = 'ポスター';
 const PLAN_SHEET_NAME     = '開発計画';
 const DEVTASK_SHEET_NAME  = '開発タスク';
 const OWNER_SHEET_NAME    = '担当';
+const PROG_SHEET_NAME     = '開発進捗';
 const PHOTO_FOLDER_NAME   = '新商品アイデア_写真';
 const POSTER_FOLDER_NAME  = '新商品アイデア_ポスター';
 
@@ -217,9 +218,16 @@ const PLAN_HEADERS   = ['計画ID', '年度', '季節', '提供開始', '提供�
 const PLAN_TEXT_COLS = [1, 2, 3, 4, 5, 6, 7, 8, 9];   // 日付はすべて yyyy/MM/dd の文字列
 const PLAN_COL = { id: 1, year: 2, season: 3, serveStart: 4, serveEnd: 5, devStart: 6, devEnd: 7, memo: 8, updatedAt: 9 };
 
+// タスク（工程）は全グループ共通：名前・期間・並び順を1本だけ持つ。
+// 担当/状態/結果の3列は旧方式（グループごとにタスクをコピー）の名残で、v2移行後は使わない（空になる）。
 const DEVTASK_HEADERS   = ['タスクID', '計画ID', '表示順', 'タスク名', '開始日', '終了日', '担当', '状態', '結果', '更新日時'];
 const DEVTASK_TEXT_COLS = [1, 2, 4, 5, 6, 7, 8, 9, 10];   // 表示順(3)だけ数値
 const DEVTASK_COL = { id: 1, planId: 2, order: 3, name: 4, start: 5, end: 6, owners: 7, status: 8, result: 9, updatedAt: 10 };
+
+// グループごとの進捗（状態・結果）。タスク×グループで1行。
+const PROG_HEADERS   = ['タスクID', 'グループ', '状態', '結果', '更新日時'];
+const PROG_TEXT_COLS = [1, 2, 3, 4, 5];
+const PROG_COL = { taskId: 1, group: 2, status: 3, result: 4, updatedAt: 5 };
 
 const SEASONS = ['春', '夏', '秋', '冬'];
 const TASK_STATUS_OPTIONS = ['未着手', '進行中', '完了'];
@@ -280,6 +288,7 @@ function apiCall(passcode, action, args) {
     case 'addDevTasksBulk':  return addDevTasksBulk_(args[0]);
     case 'updateDevTask':    return updateDevTask_(args[0], args[1]);
     case 'deleteDevTask':    return deleteDevTask_(args[0]);
+    case 'setTaskProgress':  return setTaskProgress_(args[0], args[1], args[2]);
     case 'reorderDevTasks':  return reorderDevTasks_(args[0], args[1]);
     case 'addOwner':         return addOwner_(args[0]);
     case 'renameOwner':      return renameOwner_(args[0], args[1]);
@@ -552,6 +561,16 @@ function getOwnerSheet_() {
   return sh;
 }
 
+function getProgressSheet_() {
+  const ss = getSpreadsheet_();
+  let sh = ss.getSheetByName(PROG_SHEET_NAME);
+  if (!sh) {
+    sh = ss.insertSheet(PROG_SHEET_NAME);
+    initSheet_(sh, PROG_HEADERS, PROG_TEXT_COLS, 3000);
+  }
+  return sh;
+}
+
 // ============================================================
 // 初期データ取得
 // ============================================================
@@ -568,6 +587,7 @@ function getOwnerSheet_() {
 function getInitialData_() {
   cleanupLegacySheets_();
   migrateOwners_();
+  migrateDevTasksV2_();
   const ideas = getIdeas_();
   return {
     ideas: ideas,
@@ -1867,20 +1887,69 @@ function getDevTaskList_() {
   const sh = getDevTaskSheet_();
   const lastRow = sh.getLastRow();
   if (lastRow < 2) return [];
+  const prog = getTaskProgressMap_();
   return sh.getRange(2, 1, lastRow - 1, DEVTASK_HEADERS.length).getValues()
     .filter(r => String(r[0]).trim() !== '')
-    .map(r => ({
-      id: String(r[DEVTASK_COL.id - 1]),
-      planId: String(r[DEVTASK_COL.planId - 1]),
-      order: numOrZero_(r[DEVTASK_COL.order - 1]),
-      name: String(r[DEVTASK_COL.name - 1] || ''),
-      start: String(r[DEVTASK_COL.start - 1] || ''),
-      end: String(r[DEVTASK_COL.end - 1] || ''),
-      owners: splitList_(r[DEVTASK_COL.owners - 1]),
-      status: String(r[DEVTASK_COL.status - 1] || TASK_STATUS_DEFAULT),
-      result: String(r[DEVTASK_COL.result - 1] || '')
-    }))
+    .map(r => {
+      const id = String(r[DEVTASK_COL.id - 1]);
+      return {
+        id: id,
+        planId: String(r[DEVTASK_COL.planId - 1]),
+        order: numOrZero_(r[DEVTASK_COL.order - 1]),
+        name: String(r[DEVTASK_COL.name - 1] || ''),
+        start: String(r[DEVTASK_COL.start - 1] || ''),
+        end: String(r[DEVTASK_COL.end - 1] || ''),
+        progress: prog[id] || {}   // { グループ名: { status, result } }
+      };
+    })
     .sort((a, b) => (a.order - b.order));
+}
+
+// 進捗シートを タスクID → { グループ: {status, result} } の索引にする
+function getTaskProgressMap_() {
+  const sh = getProgressSheet_();
+  const lastRow = sh.getLastRow();
+  const map = {};
+  if (lastRow < 2) return map;
+  sh.getRange(2, 1, lastRow - 1, PROG_HEADERS.length).getValues().forEach(r => {
+    const id = String(r[PROG_COL.taskId - 1]).trim();
+    const g = String(r[PROG_COL.group - 1]).trim();
+    if (!id || !g) return;
+    (map[id] = map[id] || {})[g] = {
+      status: String(r[PROG_COL.status - 1] || TASK_STATUS_DEFAULT),
+      result: String(r[PROG_COL.result - 1] || '')
+    };
+  });
+  return map;
+}
+
+// グループごとの進捗（状態・結果）を更新。タスク×グループの行を上書き（無ければ追加）
+function setTaskProgress_(taskId, group, data) {
+  data = data || {};
+  const g = String(group || '').trim();
+  if (!g) throw new Error('グループが指定されていません');
+  const status = TASK_STATUS_OPTIONS.indexOf(data.status) >= 0 ? data.status : TASK_STATUS_DEFAULT;
+  const result = String(data.result || '');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    if (findDevTaskRow_(getDevTaskSheet_(), taskId) < 0) throw new Error('タスクが見つかりません: ' + taskId);
+    const sh = getProgressSheet_();
+    const lastRow = sh.getLastRow();
+    let rowNum = -1;
+    if (lastRow >= 2) {
+      const vals = sh.getRange(2, 1, lastRow - 1, 2).getValues();
+      for (let i = 0; i < vals.length; i++) {
+        if (String(vals[i][0]) === String(taskId) && String(vals[i][1]).trim() === g) { rowNum = i + 2; break; }
+      }
+    }
+    if (rowNum < 0) rowNum = sh.getLastRow() + 1;
+    PROG_TEXT_COLS.forEach(col => sh.getRange(rowNum, col, 1, 1).setNumberFormat('@'));
+    sh.getRange(rowNum, 1, 1, PROG_HEADERS.length).setValues([[String(taskId), g, status, result, nowStr_()]]);
+    return { devTasks: getDevTaskList_() };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function getOwnerList_() {
@@ -1969,7 +2038,7 @@ function dateStrOrEmpty_(v) {
   return p[0] + '/' + ('0' + p[1]).slice(-2) + '/' + ('0' + p[2]).slice(-2);
 }
 
-// タスク追加。data = { year, season, name, start, end, owners[], status, result }
+// タスク追加。data = { year, season, name, start, end }（名前・期間は全グループ共通）
 function addDevTask_(data) {
   data = data || {};
   const name = String(data.name || '').trim();
@@ -1990,9 +2059,6 @@ function addDevTask_(data) {
     row[DEVTASK_COL.name - 1] = name;
     row[DEVTASK_COL.start - 1] = dateStrOrEmpty_(data.start);
     row[DEVTASK_COL.end - 1] = dateStrOrEmpty_(data.end);
-    row[DEVTASK_COL.owners - 1] = joinList_(data.owners);
-    row[DEVTASK_COL.status - 1] = TASK_STATUS_OPTIONS.indexOf(data.status) >= 0 ? data.status : TASK_STATUS_DEFAULT;
-    row[DEVTASK_COL.result - 1] = String(data.result || '');
     row[DEVTASK_COL.updatedAt - 1] = nowStr_();
     DEVTASK_TEXT_COLS.forEach(col => sh.getRange(rowNum, col, 1, 1).setNumberFormat('@'));
     sh.getRange(rowNum, 1, 1, DEVTASK_HEADERS.length).setValues([row]);
@@ -2002,13 +2068,12 @@ function addDevTask_(data) {
   }
 }
 
-// タスクの一括追加（標準工程の投入・他の季節からのコピー用）。
-// data = { year, season, tasks: [{ name, owners[] }] }
-// 状態は未着手・日付と結果は空で入れる（コピー元の進捗を引きずらないため）。
+// タスクの一括追加（標準工程の自動投入用）。data = { year, season, tasks: [{ name }] }
+// 名前だけで作る（期間は後から設定・進捗は各グループが更新）。
 function addDevTasksBulk_(data) {
   data = data || {};
   const items = (data.tasks || [])
-    .map(t => ({ name: String(t && t.name || '').trim(), owners: (t && t.owners) || [] }))
+    .map(t => ({ name: String(t && t.name || '').trim() }))
     .filter(t => t.name);
   if (!items.length) throw new Error('追加するタスクがありません');
   const lock = LockService.getScriptLock();
@@ -2027,8 +2092,6 @@ function addDevTasksBulk_(data) {
       row[DEVTASK_COL.planId - 1] = plan.id;
       row[DEVTASK_COL.order - 1] = ++order;
       row[DEVTASK_COL.name - 1] = t.name;
-      row[DEVTASK_COL.owners - 1] = joinList_(t.owners);
-      row[DEVTASK_COL.status - 1] = TASK_STATUS_DEFAULT;
       row[DEVTASK_COL.updatedAt - 1] = now;
       return row;
     });
@@ -2064,9 +2127,6 @@ function updateDevTask_(taskId, data) {
     row[DEVTASK_COL.name - 1] = name;
     row[DEVTASK_COL.start - 1] = dateStrOrEmpty_(data.start);
     row[DEVTASK_COL.end - 1] = dateStrOrEmpty_(data.end);
-    row[DEVTASK_COL.owners - 1] = joinList_(data.owners);
-    row[DEVTASK_COL.status - 1] = TASK_STATUS_OPTIONS.indexOf(data.status) >= 0 ? data.status : TASK_STATUS_DEFAULT;
-    row[DEVTASK_COL.result - 1] = String(data.result || '');
     row[DEVTASK_COL.updatedAt - 1] = nowStr_();
     DEVTASK_TEXT_COLS.forEach(col => sh.getRange(rowNum, col, 1, 1).setNumberFormat('@'));
     sh.getRange(rowNum, 1, 1, DEVTASK_HEADERS.length).setValues([row]);
@@ -2084,6 +2144,15 @@ function deleteDevTask_(taskId) {
     const rowNum = findDevTaskRow_(sh, taskId);
     if (rowNum < 0) throw new Error('タスクが見つかりません: ' + taskId);
     sh.deleteRow(rowNum);
+    // このタスクの進捗行も下から順に消す
+    const psh = getProgressSheet_();
+    const plast = psh.getLastRow();
+    if (plast >= 2) {
+      const vals = psh.getRange(2, 1, plast - 1, 1).getValues();
+      for (let i = vals.length - 1; i >= 0; i--) {
+        if (String(vals[i][0]) === String(taskId)) psh.deleteRow(i + 2);
+      }
+    }
     return { plans: getPlanList_(), devTasks: getDevTaskList_() };
   } finally {
     lock.releaseLock();
@@ -2146,7 +2215,7 @@ function addOwner_(name) {
   }
 }
 
-// 改名はマスタと、その担当が付いた全タスクの両方を書き換える
+// 改名はマスタと、そのグループの進捗行の両方を書き換える
 function renameOwner_(oldName, newName) {
   const from = String(oldName).trim();
   const to = validateMasterName_(newName, '担当名');
@@ -2154,23 +2223,104 @@ function renameOwner_(oldName, newName) {
   lock.waitLock(15000);
   try {
     renameInMasterColumn_(getOwnerSheet_(), from, to);
-    return { renamed: rewriteOwnerColumn_(from, to), owners: getOwnerList_(), devTasks: getDevTaskList_() };
+    rewriteOwnerColumn_(from, to);   // 旧方式の担当列にも念のため反映（v2移行後は空）
+    return { renamed: rewriteProgressGroup_(from, to), owners: getOwnerList_(), devTasks: getDevTaskList_() };
   } finally {
     lock.releaseLock();
   }
 }
 
-// 担当は使用中でも削除できる（タスクからも外れる）。顔ぶれがよく変わる前提のため
+// 担当は使用中でも削除できる（そのグループの進捗行も消える）。顔ぶれがよく変わる前提のため
 function deleteOwner_(name) {
   const target = String(name).trim();
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
     deleteFromMasterColumn_(getOwnerSheet_(), target);
-    return { removed: rewriteOwnerColumn_(target, null), owners: getOwnerList_(), devTasks: getDevTaskList_() };
+    rewriteOwnerColumn_(target, null);
+    return { removed: rewriteProgressGroup_(target, null), owners: getOwnerList_(), devTasks: getDevTaskList_() };
   } finally {
     lock.releaseLock();
   }
+}
+
+// 進捗シートのグループ名を書き換える（newName=null なら行ごと削除）。書き換えた行数を返す。
+// 改名先の行が同じタスクに既にある場合は旧行を消す（重複を作らない）
+function rewriteProgressGroup_(target, newName) {
+  const sh = getProgressSheet_();
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return 0;
+  const rows = sh.getRange(2, 1, lastRow - 1, PROG_HEADERS.length).getValues();
+  const hasNew = {};
+  if (newName) rows.forEach(r => {
+    if (String(r[PROG_COL.group - 1]).trim() === newName) hasNew[String(r[PROG_COL.taskId - 1])] = true;
+  });
+  let count = 0;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (String(rows[i][PROG_COL.group - 1]).trim() !== target) continue;
+    count++;
+    if (newName === null || hasNew[String(rows[i][PROG_COL.taskId - 1])]) { sh.deleteRow(i + 2); continue; }
+    sh.getRange(i + 2, PROG_COL.group, 1, 1).setNumberFormat('@');
+    sh.getRange(i + 2, PROG_COL.group, 1, 1).setValues([[newName]]);
+  }
+  return count;
+}
+
+// 旧方式（グループごとにタスクをコピー）→ 新方式（タスク1本＋グループ別進捗）への一括移行。
+// 計画ID×タスク名でまとめ、正本1行に統合。各コピーの担当×状態・結果は進捗シートへ移す。
+// 同名タスクを意図的に複数作る運用と衝突しないよう、実行済みフラグ（Script Properties）で1回だけ走らせる
+function migrateDevTasksV2_() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('DEVTASK_MODEL_V2')) return;
+  const sh = getDevTaskSheet_();
+  const lastRow = sh.getLastRow();
+  if (lastRow >= 2) {
+    const rows = sh.getRange(2, 1, lastRow - 1, DEVTASK_HEADERS.length).getValues();
+    const byKey = {};
+    rows.forEach((r, i) => {
+      if (String(r[DEVTASK_COL.id - 1]).trim() === '') return;
+      const key = String(r[DEVTASK_COL.planId - 1]) + ' ' + String(r[DEVTASK_COL.name - 1]).trim();
+      (byKey[key] = byKey[key] || []).push({ r: r, row: i + 2 });
+    });
+    const progAdd = [];
+    const delRows = [];
+    Object.keys(byKey).forEach(key => {
+      const arr = byKey[key];
+      arr.sort((a, b) => numOrZero_(a.r[DEVTASK_COL.order - 1]) - numOrZero_(b.r[DEVTASK_COL.order - 1]));
+      const canon = arr[0];
+      const canonId = String(canon.r[DEVTASK_COL.id - 1]);
+      let mnS = '', mxE = '';
+      arr.forEach(x => {
+        const st = String(x.r[DEVTASK_COL.start - 1] || '');
+        const en = String(x.r[DEVTASK_COL.end - 1] || '');
+        if (st && (!mnS || st < mnS)) mnS = st;
+        if (en && (!mxE || en > mxE)) mxE = en;
+        const status = String(x.r[DEVTASK_COL.status - 1] || '');
+        const result = String(x.r[DEVTASK_COL.result - 1] || '');
+        splitList_(x.r[DEVTASK_COL.owners - 1]).forEach(g => {
+          progAdd.push([canonId, g, status || TASK_STATUS_DEFAULT, result, nowStr_()]);
+        });
+        if (x !== canon) delRows.push(x.row);
+      });
+      // 正本行：期間はコピー群の最小開始〜最大終了、旧3列（担当/状態/結果）は空にする
+      canon.r[DEVTASK_COL.start - 1] = mnS;
+      canon.r[DEVTASK_COL.end - 1] = mxE;
+      canon.r[DEVTASK_COL.owners - 1] = '';
+      canon.r[DEVTASK_COL.status - 1] = '';
+      canon.r[DEVTASK_COL.result - 1] = '';
+      DEVTASK_TEXT_COLS.forEach(col => sh.getRange(canon.row, col, 1, 1).setNumberFormat('@'));
+      sh.getRange(canon.row, 1, 1, DEVTASK_HEADERS.length).setValues([canon.r]);
+    });
+    // 重複行の削除は行番号が大きい方から
+    delRows.sort((a, b) => b - a).forEach(row => sh.deleteRow(row));
+    if (progAdd.length) {
+      const psh = getProgressSheet_();
+      const startRow = psh.getLastRow() + 1;
+      PROG_TEXT_COLS.forEach(col => psh.getRange(startRow, col, progAdd.length, 1).setNumberFormat('@'));
+      psh.getRange(startRow, 1, progAdd.length, PROG_HEADERS.length).setValues(progAdd);
+    }
+  }
+  props.setProperty('DEVTASK_MODEL_V2', '1');
 }
 
 function reorderOwners_(names) {

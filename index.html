@@ -632,7 +632,7 @@ img{max-width:100%;display:block}
         <span><i class="tl-i" style="background:#fdba74"></i>秋</span>
         <span><i class="tl-i" style="background:#a5b4fc"></i>冬</span>
         <span><i class="tl-i tl-i-today"></i>今日</span>
-        <span>帯＝タスク期間（濃い部分＝進捗）。タップでそのグループへ</span>
+        <span>各行に同じ工程の帯が並び、塗り＝そのグループの進捗。帯タップで進捗を更新</span>
       </div>
     </div>
   </div>
@@ -787,25 +787,40 @@ img{max-width:100%;display:block}
   </div>
 </div>
 
-<!-- ========== 開発タスク編集モーダル ========== -->
+<!-- ========== 開発タスク（工程）編集モーダル。名前・期間は全グループ共通 ========== -->
 <div id="taskM" class="mbg hidden">
   <div class="mbox narrow">
-    <div class="mhead"><h2 id="tk-title">タスクを追加</h2><button class="x" data-close="taskM">✕</button></div>
+    <div class="mhead"><h2 id="tk-title">工程を追加</h2><button class="x" data-close="taskM">✕</button></div>
     <div class="mbody">
-      <div class="f"><label>タスク名<span class="req">*</span></label><input id="tk-name" placeholder="例：市場調査"></div>
+      <div class="f"><label>工程名<span class="req">*</span></label><input id="tk-name" placeholder="例：市場調査"></div>
       <div class="fgrid c2" style="margin-top:.6rem">
         <div class="f"><label>開始日</label><input id="tk-start" type="date"></div>
         <div class="f"><label>終了日</label><input id="tk-end" type="date"></div>
       </div>
-      <div class="f" style="margin-top:.6rem"><label>担当（複数選べます）</label><div class="picks" id="tk-owners"></div></div>
-      <div class="f" style="margin-top:.6rem"><label>状態</label><div class="picks" id="tk-status"></div></div>
-      <div class="f" style="margin-top:.6rem"><label>結果・メモ</label>
-        <textarea id="tk-result" placeholder="例：候補3案に絞った／試食会の評価は○○" style="min-height:4rem"></textarea></div>
+      <div class="hint" style="margin-top:.5rem">工程の名前と期間は全グループ共通です。グループごとの進捗（状態・結果）は各グループの画面で更新します。</div>
     </div>
     <div class="mfoot">
       <button id="tk-del" class="btn btn-danger hidden" style="flex:0 0 auto">削除</button>
       <button class="btn btn-ghost" data-close="taskM">キャンセル</button>
       <button id="tk-save" class="btn btn-primary">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== グループ進捗モーダル（タスク×グループの状態・結果） ========== -->
+<div id="progM" class="mbg hidden">
+  <div class="mbox narrow">
+    <div class="mhead"><h2 id="pg-title">進捗を更新</h2><button class="x" data-close="progM">✕</button></div>
+    <div class="mbody">
+      <div id="pg-task" style="font-size:.95rem;font-weight:800;margin-bottom:.15rem"></div>
+      <div id="pg-period" class="hint" style="margin-bottom:.7rem"></div>
+      <div class="f"><label>状態</label><div class="picks" id="pg-status"></div></div>
+      <div class="f" style="margin-top:.6rem"><label>結果・メモ</label>
+        <textarea id="pg-result" placeholder="例：候補3案に絞った／試食会の評価は○○" style="min-height:4rem"></textarea></div>
+    </div>
+    <div class="mfoot">
+      <button class="btn btn-ghost" data-close="progM">キャンセル</button>
+      <button id="pg-save" class="btn btn-primary">保存</button>
     </div>
   </div>
 </div>
@@ -1125,7 +1140,7 @@ document.querySelectorAll('[data-close]').forEach(function(b){
   on(b, 'click', function(){ q(b.dataset.close).classList.add('hidden'); });
 });
 // 背景（オーバーレイ）のクリックで閉じる。中身のクリックでは閉じない
-['detail','statusM','mmM','taskM'].forEach(function(id){
+['detail','statusM','mmM','taskM','progM'].forEach(function(id){
   on(q(id), 'click', function(e){ if(e.target === q(id)) q(id).classList.add('hidden'); });
 });
 
@@ -2414,14 +2429,17 @@ on(q('tg-add'), 'click', function(){
 // 担当マスタ（開発計画のタスクに付ける。社長・エリアなど）
 // ============================================================
 function renderOwnerList(){
+  // 進捗の記録がある件数を補足に出す（グループの使われ具合の目安）
   var counts = {};
-  (D.devTasks||[]).forEach(function(t){ (t.owners||[]).forEach(function(o){ counts[o] = (counts[o]||0) + 1; }); });
+  (D.devTasks||[]).forEach(function(t){
+    Object.keys(t.progress || {}).forEach(function(g){ counts[g] = (counts[g]||0) + 1; });
+  });
   var list = D.owners || [];
   q('ownerList').innerHTML = list.map(function(o, idx){
     var n = counts[o] || 0;
     return '<div class="mrow" data-name="' + esc(o) + '">' +
       ordHtml(idx, list.length) +
-      '<div class="nm">' + esc(o) + '<span class="sub"> ・ ' + (n ? n + '件' : '未使用') + '</span></div>' +
+      '<div class="nm">' + esc(o) + '<span class="sub"> ・ 進捗記録 ' + n + '件</span></div>' +
       '<button class="btn btn-line btn-sm" data-act="rename">編集</button>' +
       '<button class="btn btn-danger btn-sm" data-act="del">削除</button></div>';
   }).join('') || '<div class="hint">担当が登録されていません</div>';
@@ -2466,8 +2484,8 @@ on(q('ow-add'), 'click', function(){
 // 年度は5月始まり（2026年度＝2026/5/1〜2027/4/30）。ユーザー確認済みの区切り。
 var PL = { year: null, season: null, group: null };   // いま開いている年度・季節・グループ（null=季節画面）
 var TK_EDIT = null;                      // 編集中のタスクID（null=新規）
-var TK_OWNERS = [];                      // タスクモーダルで選択中の担当
-var TK_STATUS = '未着手';
+var PG = { taskId: null, group: null };  // 進捗モーダルの対象（タスク×グループ）
+var PG_STATUS = '未着手';
 
 // 'yyyy/MM/dd' → Date（不正なら null）
 function pdate(s){
@@ -2483,22 +2501,19 @@ function fyOf(dstr){
 function planOf(year, season){
   return (D.plans||[]).filter(function(p){ return String(p.year) === String(year) && p.season === season; })[0] || null;
 }
-// 各グループへ最初から自動投入する標準の工程。入れた後は自由に編集・削除できる
+// 最初から自動投入する標準の工程（全グループ共通の1セット）。入れた後は自由に編集・削除できる
 var SEED_TASKS = ['市場調査', 'メニュー案出し', '試作', '試食会・決定', '原価計算・売価決定',
                   'オペレーション確認', '撮影・ポスター作成', '提供開始'];
 
-// タスクが1つも無い季節を開いたとき、全グループに標準の工程を自動で入れる。
+// タスクが1つも無い季節を開いたとき、標準の工程を自動で入れる。
 // 二重投入を防ぐため、季節ごとに実行中フラグを持つ（連続レンダー・連打対策）
 var SEEDING = {};
 function autoSeedSeason(y, s){
   var key = y + '_' + s;
   if(SEEDING[key]) return;
   SEEDING[key] = true;
-  var tasks = [];
-  (D.owners||[]).forEach(function(g){
-    SEED_TASKS.forEach(function(n){ tasks.push({ name: n, owners: [g] }); });
-  });
-  gsRun('addDevTasksBulk', { year: String(y), season: s, tasks: tasks })
+  gsRun('addDevTasksBulk', { year: String(y), season: s,
+                             tasks: SEED_TASKS.map(function(n){ return { name: n }; }) })
     .then(function(r){
       D.plans = r.plans || D.plans;
       D.devTasks = r.devTasks || [];
@@ -2511,12 +2526,27 @@ function tasksOf(planId){
   if(!planId) return [];
   return (D.devTasks||[]).filter(function(t){ return t.planId === planId; });
 }
-// 進捗%（完了=1・進行中=0.5）。タスクが無ければ null
-function progressOf(tasks){
+// タスク×グループの進捗を取り出す（未記録なら未着手）
+function taskProg(t, g){
+  return (t && t.progress && t.progress[g]) || { status: '未着手', result: '' };
+}
+// あるグループの進捗%（完了=1・進行中=0.5）。タスクが無ければ null
+function progressOfGroup(tasks, g){
   if(!tasks || !tasks.length) return null;
   var pt = 0;
-  tasks.forEach(function(t){ pt += t.status === '完了' ? 1 : (t.status === '進行中' ? .5 : 0); });
+  tasks.forEach(function(t){
+    var st = taskProg(t, g).status;
+    pt += st === '完了' ? 1 : (st === '進行中' ? .5 : 0);
+  });
   return Math.round(pt / tasks.length * 100);
+}
+// 季節全体の進捗%＝全グループの平均。タスクかグループが無ければ null
+function seasonProgress(tasks){
+  var groups = D.owners || [];
+  if(!tasks || !tasks.length || !groups.length) return null;
+  var sum = 0;
+  groups.forEach(function(g){ sum += progressOfGroup(tasks, g) || 0; });
+  return Math.round(sum / groups.length);
 }
 // 年度内の位置（%）。年度の外は 0〜100 に丸める
 function pctX(year, dstr){
@@ -2600,8 +2630,7 @@ function renderSeasonGrid(){
   q('seasonGrid').innerHTML = (D.seasons||['春','夏','秋','冬']).map(function(s){
     var p = planOf(y, s);
     var tasks = tasksOf(p && p.id);
-    var done = tasks.filter(function(t){ return t.status === '完了'; }).length;
-    var prog = progressOf(tasks);
+    var prog = seasonProgress(tasks);   // 全グループの平均
     var serve = p && p.serveStart ? '提供 ' + md(p.serveStart) + '〜' + md(p.serveEnd) : '提供期間 未設定';
     var dev = p && p.devStart ? '開発 ' + md(p.devStart) + '〜' + md(p.devEnd) : '開発期間 未設定';
     return '<button type="button" class="scard scard-' + s + '" data-season="' + s + '">' +
@@ -2610,7 +2639,7 @@ function renderSeasonGrid(){
       '<div class="s-info">' + esc(serve) + '</div>' +
       '<div class="s-info">' + esc(dev) + '</div>' +
       '<div class="s-bar"><div class="s-fill" style="width:' + (prog || 0) + '%"></div></div>' +
-      '<div class="s-tasks">' + (tasks.length ? 'タスク ' + tasks.length + '件（完了 ' + done + '）' : 'タスク未登録') + '</div>' +
+      '<div class="s-tasks">' + (tasks.length ? '工程 ' + tasks.length + '件' : '工程未登録') + '</div>' +
       '</button>';
   }).join('');
 }
@@ -2620,7 +2649,8 @@ var SEASON_COLORS = { '春': ['#f9a8d4', '#db2777'], '夏': ['#67e8f9', '#0891b2
                       '秋': ['#fdba74', '#ea580c'], '冬': ['#a5b4fc', '#4f46e5'] };
 
 // 年間ガントは「グループ単位」。最上段に季節の提供期間、その下に各グループの行。
-// グループ行の帯＝その季節のタスク期間（日付入りタスクの最小開始〜最大終了）。帯タップでそのグループの画面へ
+// グループ行の帯＝共通の工程（全行同じ帯）。塗り具合だけがそのグループの進捗で変わるので、
+// どのグループがどこまで進んだかを縦に見比べられる。帯タップでそのグループの進捗を直接更新
 function renderTimeline(){
   var y = Number(PL.year);
   var months = [5,6,7,8,9,10,11,12,1,2,3,4];
@@ -2630,11 +2660,11 @@ function renderTimeline(){
   var todayLine = (todayPct != null && todayPct > 0 && todayPct < 100)
     ? '<div class="tl-today" style="left:' + todayPct.toFixed(2) + '%"></div>' : '';
 
-  // 季節ごとの計画とグループ分けを先に用意
+  // 季節ごとの計画とタスクを先に用意
   var byS = {};
   seasons.forEach(function(s){
     var p = planOf(y, s);
-    byS[s] = { plan: p, secs: splitSections(tasksOf(p && p.id), D.owners) };
+    byS[s] = { plan: p, tasks: tasksOf(p && p.id) };
   });
 
   // 提供期間の行（帯タップでその季節の画面へ）
@@ -2649,37 +2679,27 @@ function renderTimeline(){
   });
   h += todayLine + '</div><span class="tl-sp"></span></div>';
 
-  // グループ行（担当マスタ。担当が付いていないタスクが残っている場合だけ「担当なし」行を足す）
-  var rowNames = (D.owners || []).slice();
-  var hasOrphan = seasons.some(function(s){
-    return byS[s].secs.some(function(x){ return x.name === '担当なし' && x.list.length; });
-  });
-  if(hasOrphan) rowNames.push('担当なし');
-  rowNames.forEach(function(g){
+  // グループ行。全行に同じ工程の帯を描き、塗り（そのグループの状態）だけ変える
+  (D.owners || []).forEach(function(g){
     var bands = '', all = [];
     seasons.forEach(function(s){
-      var sec = byS[s].secs.filter(function(x){ return x.name === g; })[0];
-      var list = sec ? sec.list : [];
-      all = all.concat(list);
-      var dated = list.filter(function(t){ return pdate(t.start) && pdate(t.end); });
-      if(!dated.length) return;
-      var mn = null, mx = null;
-      dated.forEach(function(t){
-        var a2 = pdate(t.start), b2 = pdate(t.end);
-        if(mn === null || a2 < mn) mn = a2;
-        if(mx === null || b2 > mx) mx = b2;
+      byS[s].tasks.forEach(function(t){
+        all.push(t);
+        if(!(pdate(t.start) && pdate(t.end))) return;   // 開始・終了が両方入った工程だけ描く
+        var a = pctX(y, t.start), b = pctX(y, t.end);
+        if(a == null || b == null || b < a) return;
+        var st = taskProg(t, g).status;
+        var fill = st === '完了' ? 100 : (st === '進行中' ? 50 : 0);
+        bands += '<div class="tl-gband" data-task="' + esc(t.id) + '" data-season="' + s + '" data-group="' + esc(g) + '"' +
+          ' title="' + esc(t.name) + ' ' + md(t.start) + '〜' + md(t.end) + '（' + esc(g) + '：' + esc(st) + '）"' +
+          ' style="left:' + a.toFixed(2) + '%;width:' + Math.max(b - a, 1).toFixed(2) + '%;background:' + SEASON_COLORS[s][0] + '">' +
+          '<i style="width:' + fill + '%;background:' + SEASON_COLORS[s][1] + '"></i></div>';
       });
-      var a = pctX(y, dateToStr(mn)), b = pctX(y, dateToStr(mx));
-      if(a == null || b == null || b < a) return;
-      var sp = progressOf(list) || 0;
-      bands += '<div class="tl-gband" data-season="' + s + '" data-group="' + esc(g) + '" style="left:' + a.toFixed(2) +
-        '%;width:' + Math.max(b - a, 1).toFixed(2) + '%;background:' + SEASON_COLORS[s][0] + '">' +
-        '<i style="width:' + sp + '%;background:' + SEASON_COLORS[s][1] + '"></i></div>';
     });
-    var gp = progressOf(all);
+    var gp = progressOfGroup(all, g);
     h += '<div class="tl-row"><div class="tl-name">' + esc(g) +
          (gp != null ? '<span class="tl-pct">' + gp + '%</span>' : '') + '</div>' +
-         '<div class="tl-track">' + (bands || '<span class="tl-empty">日付入りのタスクなし</span>') +
+         '<div class="tl-track">' + (bands || '<span class="tl-empty">日付入りの工程なし</span>') +
          todayLine + '</div><span class="tl-sp"></span></div>';
   });
   q('timeline').innerHTML = h;
@@ -2697,12 +2717,16 @@ on(q('seasonGrid'), 'click', function(e){
   renderPlanView();
   window.scrollTo(0, 0);
 });
-// ガントの帯タップ：グループ帯→そのグループの画面、提供期間の帯→その季節の画面
+// ガントの帯タップ：工程の帯→そのグループ×工程の進捗モーダル、提供期間の帯→その季節の画面
 on(q('timeline'), 'click', function(e){
   var b = e.target.closest('.tl-gband');
   if(!b) return;
+  if(b.dataset.task){
+    openProgModal(b.dataset.task, b.dataset.group);
+    return;
+  }
   PL.season = b.dataset.season;
-  PL.group = (b.dataset.group !== undefined) ? b.dataset.group : null;
+  PL.group = null;
   renderPlanView();
   window.scrollTo(0, 0);
 });
@@ -2715,18 +2739,20 @@ on(q('planBack'), 'click', function(){
 });
 
 // 季節画面かグループ画面かを PL.group で出し分ける共通入口。
-// タスク保存後の再描画は全部ここを呼べば、いま開いている画面が正しく更新される
+// タスク保存後の再描画は全部ここを呼べば、いま開いている画面が正しく更新される。
+// 春夏秋冬（ホーム）から進捗を更新した場合は季節が選ばれていないので何もしない
 function renderPlanDetail(){
+  if(PL.season == null) return;
   if(PL.group != null) renderGroupView();
   else renderSeasonScreen();
 }
 
-// 季節画面：期間の指定＋グループごとの入り口（タスク一覧はここには出さない）
+// 季節画面：期間の指定＋工程（全グループ共通）＋グループごとの入り口
 function renderSeasonScreen(){
   var y = Number(PL.year), s = PL.season;
   var p = planOf(y, s);
   var tasks = tasksOf(p && p.id);
-  var prog = progressOf(tasks);
+  var prog = seasonProgress(tasks);
   var h = '<div class="panel">';
   h += '<h3>' + esc(s) + 'メニュー ' + y + '年度</h3>';
   if(prog != null){
@@ -2750,71 +2776,44 @@ function renderSeasonScreen(){
        '<button id="pd-save" class="btn btn-line btn-sm" style="margin-top:.6rem">日程を保存</button>';
   h += '</div>';
 
-  // グループごとの入り口。タスクの中身はグループ画面で見る。
-  // タスクが1つも無い季節は、全グループに標準の工程を自動で投入する（ボタン操作なし）
-  h += '<div class="panel"><h3>グループ別タスク</h3>';
-  var secs = splitSections(tasks, D.owners);
-  if(!tasks.length && (D.owners||[]).length){
-    h += '<div class="hint">各グループに標準の工程（' + SEED_TASKS.length + '件ずつ）を準備しています…</div></div>';
+  // 工程（全グループ共通）の一覧。ここで名前・期間・並び順を管理する。
+  // タスクが1つも無い季節は、標準の工程を自動で投入する（ボタン操作なし）
+  h += '<div class="panel"><h3>工程（全グループ共通）</h3>';
+  if(!tasks.length){
+    h += '<div class="hint">標準の工程（' + SEED_TASKS.length + '件）を準備しています…</div></div>';
     q('planDetail').innerHTML = h;
     autoSeedSeason(y, s);
     return;
   }
-  h += '<div class="gmenu">';
-  secs.forEach(function(sec){
-    var sp = progressOf(sec.list);
-    h += '<button type="button" class="gentry" data-group="' + esc(sec.name) + '">' +
-      '<span class="ge-name">' + esc(sec.name) + '</span>' +
+  h += '<div id="taskList" class="mlist">';
+  tasks.forEach(function(t, idx){
+    var period = (t.start || t.end) ? (md(t.start) + '〜' + md(t.end)) : '期間未設定';
+    h += '<div class="mrow trow" data-name="' + esc(t.id) + '">' +
+      ordHtml(idx, tasks.length) +
+      '<div class="tno">' + (idx + 1) + '</div>' +
+      '<div class="tmain"><div class="tname">' + esc(t.name) + '</div>' +
+        '<div class="tsub"><span>' + period + '</span></div></div></div>';
+  });
+  h += '</div><button type="button" id="tk-addBtn" class="btn btn-line btn-sm" style="margin-top:.6rem">＋ 工程を追加</button>' +
+       '<div class="hint" style="margin-top:.4rem">工程をタップすると名前・期間を編集できます（全グループに反映）</div></div>';
+
+  // グループごとの入り口。同じ工程に対する各グループの進捗をここから更新する
+  h += '<div class="panel"><h3>グループ別の進捗</h3><div class="gmenu">';
+  (D.owners||[]).forEach(function(g){
+    var sp = progressOfGroup(tasks, g);
+    var done = tasks.filter(function(t){ return taskProg(t, g).status === '完了'; }).length;
+    h += '<button type="button" class="gentry" data-group="' + esc(g) + '">' +
+      '<span class="ge-name">' + esc(g) + '</span>' +
       '<span class="ge-bar"><i style="width:' + (sp || 0) + '%"></i></span>' +
-      '<span class="ge-meta">' + (sec.list.length ? sec.list.length + '件' + (sp != null ? '・' + sp + '%' : '') : 'タスクなし') + '</span>' +
+      '<span class="ge-meta">' + (sp != null ? '完了 ' + done + '/' + tasks.length + '・' + sp + '%' : '—') + '</span>' +
       '<span class="ge-arrow">›</span></button>';
   });
   h += '</div></div>';
 
   q('planDetail').innerHTML = h;
-}
-
-// グループ画面：そのグループのタスクだけを一覧・追加・編集・並び替え
-function renderGroupView(){
-  var y = Number(PL.year), s = PL.season, g = PL.group;
-  var p = planOf(y, s);
-  var tasks = tasksOf(p && p.id);
-  var secs = splitSections(tasks, D.owners);
-  var sec = secs.filter(function(x){ return x.name === g; })[0];
-  if(!sec){ PL.group = null; renderPlanView(); return; }   // マスタで消された等
-  var sp = progressOf(sec.list);
-  var h = '<div class="panel">';
-  h += '<h3>' + esc(s) + 'メニュー ' + y + '年度 ・ ' + esc(g) + '</h3>';
-  if(sp != null){
-    h += '<div class="prog" style="margin-bottom:.7rem"><div class="prog-bar"><div class="prog-fill" style="width:' + sp + '%"></div></div>' +
-         '<span class="prog-num">' + sp + '%</span></div>';
-  }
-  if(sec.list.length){
-    h += '<div id="taskListG" class="mlist">';
-    sec.list.forEach(function(t, idx){
-      var period = (t.start || t.end) ? (md(t.start) + '〜' + md(t.end)) : '期間未設定';
-      h += '<div class="mrow trow' + (t.status === '完了' ? ' done' : '') + '" data-name="' + esc(t.id) + '">' +
-        ordHtml(idx, sec.list.length) +
-        '<div class="tno">' + (idx + 1) + '</div>' +
-        '<div class="tmain">' +
-          '<div class="tname">' + esc(t.name) + '</div>' +
-          '<div class="tsub"><span>' + period + '</span>' +
-            ((t.owners||[]).length ? '<span>' + t.owners.map(esc).join('・') + '</span>' : '') + '</div>' +
-          (t.result ? '<div class="tresult">' + esc(t.result) + '</div>' : '') +
-        '</div>' +
-        '<span class="pill pill-' + esc(t.status) + '">' + esc(t.status) + '</span></div>';
-    });
-    h += '</div>';
-  }else{
-    h += '<div class="hint" style="margin-bottom:.4rem">まだタスクがありません。</div>';
-  }
-  h += '<button type="button" class="btn btn-primary btn-sm tk-addSec" data-owner="' + esc(sec.preset) + '"' +
-       ' style="margin-top:.6rem">＋ タスクを追加</button></div>';
-
-  q('planDetail').innerHTML = h;
-  // 並び替え（ドラッグ）。names にはタスクIDが入る。このグループのタスクだけ順を振り直す
-  if(sec.list.length > 1){
-    initDragReorder('taskListG', function(ids){
+  // 工程の並び替え（ドラッグ）。names にはタスクIDが入る
+  if(tasks.length > 1){
+    initDragReorder('taskList', function(ids){
       var planId = p && p.id;
       if(!planId) return;
       var by = {};
@@ -2829,18 +2828,38 @@ function renderGroupView(){
   }
 }
 
-// タスクをグループごとのセクションに分ける（共通グループは廃止）。
-// どのグループにも属さないタスクがある場合だけ「担当なし」を末尾に出す（データを見失わないため）
-function splitSections(tasks, groups){
-  var matched = {};
-  var secs = (groups||[]).map(function(g){
-    var list = (tasks||[]).filter(function(t){ return (t.owners||[]).indexOf(g) >= 0; });
-    list.forEach(function(t){ matched[t.id] = 1; });
-    return { name: g, preset: g, list: list };
-  });
-  var orphans = (tasks||[]).filter(function(t){ return !matched[t.id]; });
-  if(orphans.length) secs.push({ name: '担当なし', preset: '', list: orphans });
-  return secs;
+// グループ画面：共通の工程一覧に、このグループの状態・結果を重ねて表示。タップで進捗を更新
+function renderGroupView(){
+  var y = Number(PL.year), s = PL.season, g = PL.group;
+  if((D.owners||[]).indexOf(g) < 0){ PL.group = null; renderPlanView(); return; }   // マスタで消された等
+  var p = planOf(y, s);
+  var tasks = tasksOf(p && p.id);
+  var sp = progressOfGroup(tasks, g);
+  var h = '<div class="panel">';
+  h += '<h3>' + esc(s) + 'メニュー ' + y + '年度 ・ ' + esc(g) + '</h3>';
+  if(sp != null){
+    h += '<div class="prog" style="margin-bottom:.7rem"><div class="prog-bar"><div class="prog-fill" style="width:' + sp + '%"></div></div>' +
+         '<span class="prog-num">' + sp + '%</span></div>';
+  }
+  if(tasks.length){
+    h += '<div class="mlist">';
+    tasks.forEach(function(t, idx){
+      var pg = taskProg(t, g);
+      var period = (t.start || t.end) ? (md(t.start) + '〜' + md(t.end)) : '期間未設定';
+      h += '<div class="mrow trow' + (pg.status === '完了' ? ' done' : '') + '" data-name="' + esc(t.id) + '">' +
+        '<div class="tno">' + (idx + 1) + '</div>' +
+        '<div class="tmain"><div class="tname">' + esc(t.name) + '</div>' +
+          '<div class="tsub"><span>' + period + '</span></div>' +
+          (pg.result ? '<div class="tresult">' + esc(pg.result) + '</div>' : '') +
+        '</div>' +
+        '<span class="pill pill-' + esc(pg.status) + '">' + esc(pg.status) + '</span></div>';
+    });
+    h += '</div><div class="hint" style="margin-top:.4rem">工程をタップして、このグループの状態・結果を更新します</div>';
+  }else{
+    h += '<div class="hint">まだ工程がありません。季節画面で追加してください。</div>';
+  }
+  h += '</div>';
+  q('planDetail').innerHTML = h;
 }
 
 on(q('planDetail'), 'click', function(e){
@@ -2859,7 +2878,7 @@ on(q('planDetail'), 'click', function(e){
     }).catch(function(err){ t.disabled = false; toast(errMsg(err), true); });
     return;
   }
-  if(t.classList.contains('tk-addSec')){ openTaskModal(null, t.dataset.owner || ''); return; }
+  if(t.id === 'tk-addBtn'){ openTaskModal(null); return; }
   var ge = e.target.closest('.gentry');
   if(ge){
     PL.group = ge.dataset.group;
@@ -2867,56 +2886,31 @@ on(q('planDetail'), 'click', function(e){
     window.scrollTo(0, 0);
     return;
   }
+  // 工程行のタップ：季節画面なら工程の編集（共通）、グループ画面ならそのグループの進捗更新
   var row = e.target.closest('.trow');
-  if(row && !e.target.closest('.drag-handle')) openTaskModal(row.dataset.name);
+  if(row && !e.target.closest('.drag-handle')){
+    if(PL.group != null) openProgModal(row.dataset.name, PL.group);
+    else openTaskModal(row.dataset.name);
+  }
 });
 
-// ---- タスクの追加・編集モーダル ----
-// presetOwner: セクションの「＋」から開いたとき、そのグループを担当に入れた状態で始める
-function openTaskModal(taskId, presetOwner){
+// ---- 工程の追加・編集モーダル（名前・期間は全グループ共通） ----
+function openTaskModal(taskId){
   TK_EDIT = taskId || null;
   var t = TK_EDIT ? (D.devTasks||[]).filter(function(x){ return x.id === TK_EDIT; })[0] : null;
-  q('tk-title').textContent = t ? 'タスクを編集'
-    : 'タスクを追加（' + PL.season + ' ' + PL.year + '年度' + (presetOwner ? '・' + presetOwner : '') + '）';
+  q('tk-title').textContent = t ? '工程を編集' : '工程を追加（' + PL.season + ' ' + PL.year + '年度）';
   q('tk-name').value = t ? t.name : '';
   q('tk-start').value = d2i(t && t.start);
   q('tk-end').value = d2i(t && t.end);
-  q('tk-result').value = t ? t.result : '';
-  TK_OWNERS = t ? (t.owners||[]).slice() : (presetOwner ? [presetOwner] : []);
-  TK_STATUS = t ? t.status : '未着手';
-  renderTkPicks();
   q('tk-del').classList.toggle('hidden', !t);
   q('taskM').classList.remove('hidden');
 }
-function renderTkPicks(){
-  q('tk-owners').innerHTML = (D.owners||[]).map(function(o){
-    return '<button type="button" class="pick' + (TK_OWNERS.indexOf(o) >= 0 ? ' on' : '') + '" data-o="' + esc(o) + '">' + esc(o) + '</button>';
-  }).join('') || '<span class="hint">担当マスタが空です（マスタ画面で追加できます）</span>';
-  q('tk-status').innerHTML = (D.taskStatusOptions||['未着手','進行中','完了']).map(function(s){
-    return '<button type="button" class="pick' + (TK_STATUS === s ? ' on' : '') + '" data-s="' + esc(s) + '">' + esc(s) + '</button>';
-  }).join('');
-}
-on(q('tk-owners'), 'click', function(e){
-  var b = e.target.closest('.pick');
-  if(!b) return;
-  var o = b.dataset.o;
-  var i = TK_OWNERS.indexOf(o);
-  if(i >= 0) TK_OWNERS.splice(i, 1); else TK_OWNERS.push(o);
-  renderTkPicks();
-});
-on(q('tk-status'), 'click', function(e){
-  var b = e.target.closest('.pick');
-  if(!b) return;
-  TK_STATUS = b.dataset.s;
-  renderTkPicks();
-});
 on(q('tk-save'), 'click', function(){
   var name = q('tk-name').value.trim();
-  if(!name){ toast('タスク名を入力してください', true); return; }
+  if(!name){ toast('工程名を入力してください', true); return; }
   var data = {
     year: String(PL.year), season: PL.season, name: name,
-    start: i2d(q('tk-start').value), end: i2d(q('tk-end').value),
-    owners: TK_OWNERS.slice(), status: TK_STATUS, result: q('tk-result').value
+    start: i2d(q('tk-start').value), end: i2d(q('tk-end').value)
   };
   var btn = q('tk-save');
   btn.disabled = true; btn.textContent = '保存中…';
@@ -2924,7 +2918,7 @@ on(q('tk-save'), 'click', function(){
     .then(function(r){
       D.plans = r.plans || D.plans; D.devTasks = r.devTasks || [];
       q('taskM').classList.add('hidden');
-      renderSeasonGrid(); renderTimeline(); renderPlanDetail(); renderOwnerList();
+      renderSeasonGrid(); renderTimeline(); renderPlanDetail();
       toast('保存しました');
     })
     .catch(function(e){ toast(errMsg(e), true); })
@@ -2933,14 +2927,55 @@ on(q('tk-save'), 'click', function(){
 on(q('tk-del'), 'click', function(){
   if(!TK_EDIT) return;
   var id = TK_EDIT;
-  askConfirm('このタスクを削除しますか？', function(){
+  askConfirm('この工程を削除しますか？\n全グループの進捗記録も消えます。', function(){
     gsRun('deleteDevTask', id).then(function(r){
       D.plans = r.plans || D.plans; D.devTasks = r.devTasks || [];
       q('taskM').classList.add('hidden');
-      renderSeasonGrid(); renderTimeline(); renderPlanDetail(); renderOwnerList();
+      renderSeasonGrid(); renderTimeline(); renderPlanDetail();
       toast('削除しました');
     }).catch(function(e){ toast(errMsg(e), true); });
   });
+});
+
+// ---- グループ進捗モーダル（タスク×グループの状態・結果） ----
+function openProgModal(taskId, group){
+  var t = (D.devTasks||[]).filter(function(x){ return x.id === taskId; })[0];
+  if(!t) return;
+  PG.taskId = taskId;
+  PG.group = group;
+  var pg = taskProg(t, group);
+  PG_STATUS = pg.status;
+  q('pg-title').textContent = group + ' の進捗';
+  q('pg-task').textContent = t.name;
+  q('pg-period').textContent = (t.start || t.end) ? (md(t.start) + '〜' + md(t.end)) : '期間未設定';
+  q('pg-result').value = pg.result;
+  renderPgStatus();
+  q('progM').classList.remove('hidden');
+}
+function renderPgStatus(){
+  q('pg-status').innerHTML = (D.taskStatusOptions||['未着手','進行中','完了']).map(function(s){
+    return '<button type="button" class="pick' + (PG_STATUS === s ? ' on' : '') + '" data-s="' + esc(s) + '">' + esc(s) + '</button>';
+  }).join('');
+}
+on(q('pg-status'), 'click', function(e){
+  var b = e.target.closest('.pick');
+  if(!b) return;
+  PG_STATUS = b.dataset.s;
+  renderPgStatus();
+});
+on(q('pg-save'), 'click', function(){
+  if(!PG.taskId || !PG.group) return;
+  var btn = q('pg-save');
+  btn.disabled = true; btn.textContent = '保存中…';
+  gsRun('setTaskProgress', PG.taskId, PG.group, { status: PG_STATUS, result: q('pg-result').value })
+    .then(function(r){
+      D.devTasks = r.devTasks || [];
+      q('progM').classList.add('hidden');
+      renderSeasonGrid(); renderTimeline(); renderPlanDetail();
+      toast('保存しました');
+    })
+    .catch(function(e){ toast(errMsg(e), true); })
+    .then(function(){ btn.disabled = false; btn.textContent = '保存'; });
 });
 
 // ============================================================
