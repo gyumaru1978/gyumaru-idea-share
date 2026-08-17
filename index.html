@@ -169,18 +169,18 @@ img{max-width:100%;display:block}
    位置はJSが年度内の日数割合(%)で計算する。 */
 .tl-months{display:flex;margin-left:6.2rem;margin-right:1.4rem;border-bottom:1px solid var(--line)}
 .tl-months span{flex:1;font-size:.7rem;font-weight:600;color:var(--ink-muted);text-align:left;padding:.25rem 0 .3rem;border-left:1px dotted var(--line)}
-.tl-row{display:flex;align-items:center;gap:0;margin:.6rem 0;cursor:pointer;border-radius:10px}
-.tl-row:hover{background:var(--bg)}
-.tl-row.sel{background:var(--brand-tint)}
-.tl-name{flex:0 0 6.2rem;font-size:1.05rem;font-weight:800;padding:.4rem .5rem}
-.tl-name .tl-pct{display:block;font-size:.8rem;font-weight:800;color:var(--brand-dark)}
-.tl-track{flex:1;position:relative;height:3.3rem;background:repeating-linear-gradient(90deg,transparent,transparent calc(100%/12 - 1px),var(--line) calc(100%/12 - 1px),var(--line) calc(100%/12))}
-.tl-band{position:absolute;border-radius:5px}
-.tl-dev{top:.35rem;height:1.05rem;background:#a7f3d0;border:1px solid #34d399}
-.tl-serve{bottom:.35rem;height:1.05rem;background:var(--brand);opacity:.85}
-.tl-prog{position:absolute;left:0;top:0;bottom:0;background:rgba(4,120,87,.08);border-right:3px solid var(--brand);pointer-events:none}
-.tl-today{position:absolute;top:-3px;bottom:-3px;width:3px;background:var(--danger);border-radius:2px;pointer-events:none}
-.tl-arrow{flex:0 0 auto;width:1.4rem;text-align:center;font-size:1.2rem;color:var(--ink-faint)}
+.tl-row{display:flex;align-items:center;gap:0;margin:.6rem 0;border-radius:10px}
+.tl-name{flex:0 0 6.2rem;font-size:.88rem;font-weight:800;line-height:1.3;padding:.4rem .45rem}
+.tl-name .tl-pct{display:block;font-size:.78rem;font-weight:800;color:var(--brand-dark)}
+.tl-track{flex:1;position:relative;height:2.9rem;background:repeating-linear-gradient(90deg,transparent,transparent calc(100%/12 - 1px),var(--line) calc(100%/12 - 1px),var(--line) calc(100%/12))}
+.tl-track-sm{height:2.2rem}
+/* グループ行の帯＝その季節のタスク期間。薄い季節色の中に濃い色で進捗を重ねる */
+.tl-gband{position:absolute;top:.45rem;bottom:.45rem;border-radius:6px;cursor:pointer;overflow:hidden}
+.tl-gband i{display:block;height:100%}
+.tl-gband span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:.72rem;font-weight:800;color:rgba(0,0,0,.55);pointer-events:none}
+.tl-today{position:absolute;top:-3px;bottom:-3px;width:3px;background:var(--danger);border-radius:2px;pointer-events:none;z-index:2}
+.tl-sp{flex:0 0 auto;width:1.4rem}
 
 /* ===== 開発計画の入口：四象限（春夏秋冬）=====
    でっかい季節カード2×2。タップでその季節のロードマップへ。季節ごとの色で直感的に */
@@ -209,8 +209,6 @@ img{max-width:100%;display:block}
 .scard-冬 .s-fill{background:#4f46e5}
 .tl-legend{display:flex;gap:1rem;margin-top:.6rem;font-size:.75rem;color:var(--ink-muted);flex-wrap:wrap}
 .tl-legend .tl-i{display:inline-block;width:.85rem;height:.55rem;border-radius:3px;margin-right:.25rem;vertical-align:middle}
-.tl-i-dev{background:#a7f3d0;border:1px solid #34d399}
-.tl-i-serve{background:var(--brand);opacity:.85}
 .tl-i-today{background:var(--danger);width:2px !important;height:.85rem}
 .tl-empty{font-size:.78rem;color:var(--ink-faint);position:absolute;left:.5rem;top:50%;transform:translateY(-50%)}
 
@@ -629,9 +627,12 @@ img{max-width:100%;display:block}
       <!-- 横軸は5月〜翌4月。各季節の行に開発期間・提供期間の帯と進捗、今日の位置を描く -->
       <div id="timeline"></div>
       <div class="tl-legend">
-        <span><i class="tl-i tl-i-dev"></i>開発・試作</span>
-        <span><i class="tl-i tl-i-serve"></i>提供期間</span>
+        <span><i class="tl-i" style="background:#f9a8d4"></i>春</span>
+        <span><i class="tl-i" style="background:#67e8f9"></i>夏</span>
+        <span><i class="tl-i" style="background:#fdba74"></i>秋</span>
+        <span><i class="tl-i" style="background:#a5b4fc"></i>冬</span>
         <span><i class="tl-i tl-i-today"></i>今日</span>
+        <span>帯＝タスク期間（濃い部分＝進捗）。タップでそのグループへ</span>
       </div>
     </div>
   </div>
@@ -2599,40 +2600,67 @@ function renderSeasonGrid(){
   }).join('');
 }
 
+// 季節ごとの帯の色（薄い色＝期間、濃い色＝進捗）。四象限カードと同じ系統
+var SEASON_COLORS = { '春': ['#f9a8d4', '#db2777'], '夏': ['#67e8f9', '#0891b2'],
+                      '秋': ['#fdba74', '#ea580c'], '冬': ['#a5b4fc', '#4f46e5'] };
+
+// 年間ガントは「グループ単位」。最上段に季節の提供期間、その下に共通＋各グループの行。
+// グループ行の帯＝その季節のタスク期間（日付入りタスクの最小開始〜最大終了）。帯タップでそのグループの画面へ
 function renderTimeline(){
   var y = Number(PL.year);
   var months = [5,6,7,8,9,10,11,12,1,2,3,4];
   var h = '<div class="tl-months">' + months.map(function(m){ return '<span>' + m + '月</span>'; }).join('') + '</div>';
   var todayPct = pctX(y, D.today);
-  (D.seasons||['春','夏','秋','冬']).forEach(function(s){
+  var seasons = D.seasons || ['春','夏','秋','冬'];
+  var todayLine = (todayPct != null && todayPct > 0 && todayPct < 100)
+    ? '<div class="tl-today" style="left:' + todayPct.toFixed(2) + '%"></div>' : '';
+
+  // 季節ごとの計画とグループ分けを先に用意
+  var byS = {};
+  seasons.forEach(function(s){
     var p = planOf(y, s);
-    var tasks = tasksOf(p && p.id);
-    var prog = progressOf(tasks);
-    h += '<div class="tl-row' + (PL.season === s ? ' sel' : '') + '" data-season="' + s + '">' +
-         '<div class="tl-name">' + s + (prog != null ? '<span class="tl-pct">' + prog + '%</span>' : '') + '</div>' +
-         '<div class="tl-track">';
-    var hasBand = false;
-    if(p){
-      var ds = pctX(y, p.devStart), de = pctX(y, p.devEnd);
-      if(ds != null && de != null && de >= ds){
-        h += '<div class="tl-band tl-dev" style="left:' + ds.toFixed(2) + '%;width:' + Math.max(de - ds, .8).toFixed(2) + '%"></div>';
-        hasBand = true;
-      }
-      var ss = pctX(y, p.serveStart), se = pctX(y, p.serveEnd);
-      if(ss != null && se != null && se >= ss){
-        h += '<div class="tl-band tl-serve" style="left:' + ss.toFixed(2) + '%;width:' + Math.max(se - ss, .8).toFixed(2) + '%"></div>';
-        hasBand = true;
-      }
-      // 実績の目安：開発期間の帯に進捗%ぶんの薄い色を重ねる（どこまで来たかの見当）
-      if(prog != null && ds != null && de != null && de >= ds){
-        h += '<div class="tl-prog" style="left:' + ds.toFixed(2) + '%;width:' + ((de - ds) * prog / 100).toFixed(2) + '%"></div>';
-      }
-    }
-    if(!hasBand) h += '<span class="tl-empty">日程未設定（タップして設定）</span>';
-    if(todayPct != null && todayPct > 0 && todayPct < 100){
-      h += '<div class="tl-today" style="left:' + todayPct.toFixed(2) + '%"></div>';
-    }
-    h += '</div><span class="tl-arrow">›</span></div>';
+    byS[s] = { plan: p, secs: splitSections(tasksOf(p && p.id), D.owners) };
+  });
+
+  // 提供期間の行（帯タップでその季節の画面へ）
+  h += '<div class="tl-row"><div class="tl-name">提供期間</div><div class="tl-track tl-track-sm">';
+  seasons.forEach(function(s){
+    var p = byS[s].plan;
+    if(!p) return;
+    var a = pctX(y, p.serveStart), b = pctX(y, p.serveEnd);
+    if(a == null || b == null || b < a) return;
+    h += '<div class="tl-gband" data-season="' + s + '" style="left:' + a.toFixed(2) + '%;width:' +
+         Math.max(b - a, .8).toFixed(2) + '%;background:' + SEASON_COLORS[s][0] + '"><span>' + s + '</span></div>';
+  });
+  h += todayLine + '</div><span class="tl-sp"></span></div>';
+
+  // グループ行（共通＋担当マスタ）
+  ['共通'].concat(D.owners || []).forEach(function(g){
+    var bands = '', all = [];
+    seasons.forEach(function(s){
+      var sec = byS[s].secs.filter(function(x){ return x.name === g; })[0];
+      var list = sec ? sec.list : [];
+      all = all.concat(list);
+      var dated = list.filter(function(t){ return pdate(t.start) && pdate(t.end); });
+      if(!dated.length) return;
+      var mn = null, mx = null;
+      dated.forEach(function(t){
+        var a2 = pdate(t.start), b2 = pdate(t.end);
+        if(mn === null || a2 < mn) mn = a2;
+        if(mx === null || b2 > mx) mx = b2;
+      });
+      var a = pctX(y, dateToStr(mn)), b = pctX(y, dateToStr(mx));
+      if(a == null || b == null || b < a) return;
+      var sp = progressOf(list) || 0;
+      bands += '<div class="tl-gband" data-season="' + s + '" data-group="' + esc(g) + '" style="left:' + a.toFixed(2) +
+        '%;width:' + Math.max(b - a, 1).toFixed(2) + '%;background:' + SEASON_COLORS[s][0] + '">' +
+        '<i style="width:' + sp + '%;background:' + SEASON_COLORS[s][1] + '"></i></div>';
+    });
+    var gp = progressOf(all);
+    h += '<div class="tl-row"><div class="tl-name">' + esc(g) +
+         (gp != null ? '<span class="tl-pct">' + gp + '%</span>' : '') + '</div>' +
+         '<div class="tl-track">' + (bands || '<span class="tl-empty">日付入りのタスクなし</span>') +
+         todayLine + '</div><span class="tl-sp"></span></div>';
   });
   q('timeline').innerHTML = h;
 }
@@ -2649,11 +2677,12 @@ on(q('seasonGrid'), 'click', function(e){
   renderPlanView();
   window.scrollTo(0, 0);
 });
+// ガントの帯タップ：グループ帯→そのグループの画面、提供期間の帯→その季節の画面
 on(q('timeline'), 'click', function(e){
-  var row = e.target.closest('.tl-row');
-  if(!row) return;
-  PL.season = row.dataset.season;
-  PL.group = null;
+  var b = e.target.closest('.tl-gband');
+  if(!b) return;
+  PL.season = b.dataset.season;
+  PL.group = (b.dataset.group !== undefined) ? b.dataset.group : null;
   renderPlanView();
   window.scrollTo(0, 0);
 });
