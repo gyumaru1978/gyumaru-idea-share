@@ -167,7 +167,7 @@ img{max-width:100%;display:block}
 /* ===== 開発計画（年間タイムライン） =====
    横軸は5月〜翌4月の12ヶ月。季節ごとに1行で、開発期間と提供期間の帯を重ねて描く。
    位置はJSが年度内の日数割合(%)で計算する。 */
-.tl-months{display:flex;margin-left:5.2rem;border-bottom:1px solid var(--line)}
+.tl-months{display:flex;margin-left:5.2rem;margin-right:1.3rem;border-bottom:1px solid var(--line)}
 .tl-months span{flex:1;font-size:.6rem;color:var(--ink-faint);text-align:left;padding:.15rem 0 .2rem;border-left:1px dotted var(--line)}
 .tl-row{display:flex;align-items:center;gap:0;margin:.45rem 0;cursor:pointer;border-radius:8px}
 .tl-row:hover{background:var(--bg)}
@@ -180,6 +180,7 @@ img{max-width:100%;display:block}
 .tl-serve{bottom:.2rem;height:.7rem;background:var(--brand);opacity:.85}
 .tl-prog{position:absolute;left:0;top:0;bottom:0;background:rgba(4,120,87,.08);border-right:2px solid var(--brand);pointer-events:none}
 .tl-today{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--danger);pointer-events:none}
+.tl-arrow{flex:0 0 auto;width:1.3rem;text-align:center;font-size:1.05rem;color:var(--ink-faint)}
 .tl-legend{display:flex;gap:1rem;margin-top:.5rem;font-size:.68rem;color:var(--ink-muted);flex-wrap:wrap}
 .tl-legend .tl-i{display:inline-block;width:.85rem;height:.55rem;border-radius:3px;margin-right:.25rem;vertical-align:middle}
 .tl-i-dev{background:#a7f3d0;border:1px solid #34d399}
@@ -420,9 +421,9 @@ img{max-width:100%;display:block}
 
 <nav class="nav">
   <div class="nav-in">
+    <button class="nav-btn" data-view="plan">開発計画</button>
     <button class="nav-btn on" data-view="list">一覧</button>
     <button class="nav-btn" data-view="form">新規登録</button>
-    <button class="nav-btn" data-view="plan">開発計画</button>
     <button class="nav-btn" data-view="master">マスタ</button>
   </div>
 </nav>
@@ -576,22 +577,29 @@ img{max-width:100%;display:block}
 </section>
 
 <!-- ========== マスタ ========== -->
-<!-- ========== 開発計画（季節メニューのタスク管理） ========== -->
+<!-- ========== 開発計画（季節メニューのタスク管理） ==========
+     階層構造：まず春夏秋冬の一覧（年間タイムライン）→ 季節をタップするとロードマップ（タスク） -->
 <section id="view-plan" class="hidden">
-  <div class="panel">
-    <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:.6rem">
-      <h3 style="margin:0;padding:0;border:none">年間計画</h3>
-      <select id="planYear" style="padding:.35rem .5rem;border:1px solid var(--line);border-radius:8px;font-size:.85rem"></select>
-    </div>
-    <!-- 横軸は5月〜翌4月。各季節の行に開発期間・提供期間の帯と進捗、今日の位置を描く -->
-    <div id="timeline"></div>
-    <div class="tl-legend">
-      <span><i class="tl-i tl-i-dev"></i>開発・試作</span>
-      <span><i class="tl-i tl-i-serve"></i>提供期間</span>
-      <span><i class="tl-i tl-i-today"></i>今日</span>
+  <div id="planHome">
+    <div class="panel">
+      <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:.6rem">
+        <h3 style="margin:0;padding:0;border:none">年間計画</h3>
+        <select id="planYear" style="padding:.35rem .5rem;border:1px solid var(--line);border-radius:8px;font-size:.85rem"></select>
+      </div>
+      <p style="font-size:.75rem;color:var(--ink-faint);margin-bottom:.5rem">季節をタップすると、その季節のタスク（ロードマップ）が開きます。</p>
+      <!-- 横軸は5月〜翌4月。各季節の行に開発期間・提供期間の帯と進捗、今日の位置を描く -->
+      <div id="timeline"></div>
+      <div class="tl-legend">
+        <span><i class="tl-i tl-i-dev"></i>開発・試作</span>
+        <span><i class="tl-i tl-i-serve"></i>提供期間</span>
+        <span><i class="tl-i tl-i-today"></i>今日</span>
+      </div>
     </div>
   </div>
-  <div id="planDetail"></div>
+  <div id="planDetailWrap" class="hidden">
+    <button id="planBack" class="btn btn-line btn-sm" style="margin-bottom:.7rem">← 春夏秋冬へ戻る</button>
+    <div id="planDetail"></div>
+  </div>
 </section>
 
 <section id="view-master" class="hidden">
@@ -1033,7 +1041,7 @@ function switchView(name){
     b.classList.toggle('on', b.dataset.view === name);
   });
   if(name === 'master') closeMaster();   // マスタは毎回メニューから始める
-  if(name === 'plan') renderPlanView();
+  if(name === 'plan'){ PL.season = null; renderPlanView(); }   // 開発計画も毎回「春夏秋冬」から始める
   window.scrollTo(0, 0);
 }
 
@@ -2433,14 +2441,6 @@ function fyOf(dstr){
   var d = pdate(dstr) || new Date();
   return d.getMonth() + 1 >= 5 ? d.getFullYear() : d.getFullYear() - 1;
 }
-// 今日の月からいま考えるべき季節を出す（3-5月=春, 6-8月=夏, 9-11月=秋, 12-2月=冬）
-function seasonDefault(){
-  var m = (pdate(D.today) || new Date()).getMonth() + 1;
-  if(m >= 3 && m <= 5) return '春';
-  if(m >= 6 && m <= 8) return '夏';
-  if(m >= 9 && m <= 11) return '秋';
-  return '冬';
-}
 function planOf(year, season){
   return (D.plans||[]).filter(function(p){ return String(p.year) === String(year) && p.season === season; })[0] || null;
 }
@@ -2473,9 +2473,16 @@ function md(s){
 function d2i(s){ return String(s||'').replace(/\//g, '-'); }
 function i2d(s){ return String(s||'').replace(/-/g, '/'); }
 
+// 階層ナビ：PL.season が null なら「春夏秋冬の一覧（タイムライン）」、選択中ならその季節のロードマップ
 function renderPlanView(){
   if(PL.year == null) PL.year = fyOf(D.today);
-  if(PL.season == null) PL.season = seasonDefault();
+  var detail = PL.season != null;
+  q('planHome').classList.toggle('hidden', detail);
+  q('planDetailWrap').classList.toggle('hidden', !detail);
+  if(detail){
+    renderPlanDetail();
+    return;
+  }
   // 年度の選択肢：登録済みの計画の年度＋今年度＋来年度
   var years = {};
   (D.plans||[]).forEach(function(p){ if(/^\d{4}$/.test(p.year)) years[p.year] = 1; });
@@ -2488,7 +2495,6 @@ function renderPlanView(){
       y + '年度（' + y + '/5〜' + (y + 1) + '/4）</option>';
   }).join('');
   renderTimeline();
-  renderPlanDetail();
 }
 
 function renderTimeline(){
@@ -2524,7 +2530,7 @@ function renderTimeline(){
     if(todayPct != null && todayPct > 0 && todayPct < 100){
       h += '<div class="tl-today" style="left:' + todayPct.toFixed(2) + '%"></div>';
     }
-    h += '</div></div>';
+    h += '</div><span class="tl-arrow">›</span></div>';
   });
   q('timeline').innerHTML = h;
 }
@@ -2538,6 +2544,12 @@ on(q('timeline'), 'click', function(e){
   if(!row) return;
   PL.season = row.dataset.season;
   renderPlanView();
+  window.scrollTo(0, 0);
+});
+on(q('planBack'), 'click', function(){
+  PL.season = null;
+  renderPlanView();
+  window.scrollTo(0, 0);
 });
 
 function renderPlanDetail(){
