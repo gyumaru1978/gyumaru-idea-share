@@ -220,13 +220,16 @@ img{max-width:100%;display:block}
 .prog .prog-fill{height:100%;background:var(--brand);border-radius:999px}
 .prog .prog-num{font-size:.78rem;font-weight:800;color:var(--brand-dark);flex:0 0 auto}
 
-/* グループ（担当）ごとのセクション見出し */
-.tsec{margin:.7rem 0 .9rem}
-.tsec-h{display:flex;align-items:center;gap:.55rem;padding:.5rem .7rem;margin-bottom:.35rem;
-  background:var(--brand-tint);border-left:4px solid var(--brand);border-radius:8px;
-  font-size:.9rem;font-weight:800;color:var(--brand-dark)}
-.tsec-h .tsec-n{font-size:.72rem;font-weight:700;color:var(--ink-muted)}
-.tsec-h .tsec-p{margin-left:auto;font-size:.82rem;font-weight:800}
+/* グループごとの入り口（季節画面）。マスタメニューと同じ操作感で、進捗バー付き */
+.gmenu{display:flex;flex-direction:column;gap:.55rem}
+.gentry{display:flex;align-items:center;gap:.7rem;width:100%;text-align:left;cursor:pointer;
+  padding:.85rem .9rem;background:var(--bg);border:1px solid var(--line);border-radius:12px}
+.gentry:hover{background:var(--brand-tint);border-color:var(--brand)}
+.gentry .ge-name{font-size:1rem;font-weight:800;color:var(--ink);flex:0 0 auto;min-width:5.5rem}
+.gentry .ge-bar{flex:1;height:.55rem;background:#fff;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.gentry .ge-bar i{display:block;height:100%;background:var(--brand);border-radius:999px}
+.gentry .ge-meta{flex:0 0 auto;font-size:.75rem;font-weight:700;color:var(--ink-muted);white-space:nowrap}
+.gentry .ge-arrow{flex:0 0 auto;font-size:1.15rem;color:var(--ink-faint)}
 
 /* タスク行（ロードマップ）。マスタ行(.mrow)と同じ操作感＋タップで編集 */
 .trow{display:flex;align-items:center;gap:.5rem;padding:.55rem .5rem;border-bottom:1px solid var(--line);cursor:pointer}
@@ -1077,7 +1080,7 @@ function switchView(name){
     b.classList.toggle('on', b.dataset.view === name);
   });
   if(name === 'master') closeMaster();   // マスタは毎回メニューから始める
-  if(name === 'plan'){ PL.season = null; renderPlanView(); }   // 開発計画も毎回「春夏秋冬」から始める
+  if(name === 'plan'){ PL.season = null; PL.group = null; renderPlanView(); }   // 開発計画も毎回「春夏秋冬」から始める
   window.scrollTo(0, 0);
 }
 
@@ -2460,7 +2463,7 @@ on(q('ow-add'), 'click', function(){
 // 開発計画（年間タイムライン＋季節ごとのロードマップ）
 // ============================================================
 // 年度は5月始まり（2026年度＝2026/5/1〜2027/4/30）。ユーザー確認済みの区切り。
-var PL = { year: null, season: null };   // いま開いている年度・季節
+var PL = { year: null, season: null, group: null };   // いま開いている年度・季節・グループ（null=季節画面）
 var TK_EDIT = null;                      // 編集中のタスクID（null=新規）
 var TK_OWNERS = [];                      // タスクモーダルで選択中の担当
 var TK_STATUS = '未着手';
@@ -2549,13 +2552,14 @@ function serveDefault(year, season){
   };
 }
 
-// 階層ナビ：PL.season が null なら「春夏秋冬の一覧（タイムライン）」、選択中ならその季節のロードマップ
+// 階層ナビ：春夏秋冬（四象限＋ガント）→ 季節（期間＋グループ入口）→ グループのタスク画面
 function renderPlanView(){
   if(PL.year == null) PL.year = fyOf(D.today);
   var detail = PL.season != null;
   q('planHome').classList.toggle('hidden', detail);
   q('planDetailWrap').classList.toggle('hidden', !detail);
   if(detail){
+    q('planBack').textContent = PL.group != null ? '← ' + PL.season + 'メニューへ戻る' : '← 春夏秋冬へ戻る';
     renderPlanDetail();
     return;
   }
@@ -2641,6 +2645,7 @@ on(q('seasonGrid'), 'click', function(e){
   var card = e.target.closest('.scard');
   if(!card) return;
   PL.season = card.dataset.season;
+  PL.group = null;
   renderPlanView();
   window.scrollTo(0, 0);
 });
@@ -2648,16 +2653,27 @@ on(q('timeline'), 'click', function(e){
   var row = e.target.closest('.tl-row');
   if(!row) return;
   PL.season = row.dataset.season;
+  PL.group = null;
   renderPlanView();
   window.scrollTo(0, 0);
 });
+// 戻るボタン：グループ画面→季節画面→春夏秋冬 と1段ずつ戻る
 on(q('planBack'), 'click', function(){
-  PL.season = null;
+  if(PL.group != null) PL.group = null;
+  else PL.season = null;
   renderPlanView();
   window.scrollTo(0, 0);
 });
 
+// 季節画面かグループ画面かを PL.group で出し分ける共通入口。
+// タスク保存後の再描画は全部ここを呼べば、いま開いている画面が正しく更新される
 function renderPlanDetail(){
+  if(PL.group != null) renderGroupView();
+  else renderSeasonScreen();
+}
+
+// 季節画面：期間の指定＋グループごとの入り口（タスク一覧はここには出さない）
+function renderSeasonScreen(){
   var y = Number(PL.year), s = PL.season;
   var p = planOf(y, s);
   var tasks = tasksOf(p && p.id);
@@ -2685,59 +2701,78 @@ function renderPlanDetail(){
        '<button id="pd-save" class="btn btn-line btn-sm" style="margin-top:.6rem">日程を保存</button>';
   h += '</div>';
 
-  // ロードマップ。グループ（担当マスタ）ごとのセクションに分ける。
-  // どのグループにも属さないタスクは「共通」（標準の工程はここに入る）
-  h += '<div class="panel"><h3>ロードマップ（タスク）</h3>';
+  // グループごとの入り口。タスクの中身はグループ画面で見る
+  h += '<div class="panel"><h3>グループ別タスク</h3>';
   var secs = splitSections(tasks, D.owners);
-  if(tasks.length){
-    secs.forEach(function(sec, si){
-      var sp = progressOf(sec.list);
-      h += '<div class="tsec"><div class="tsec-h"><span>' + esc(sec.name) + '</span>' +
-           '<span class="tsec-n">' + (sec.list.length ? sec.list.length + '件' : '') + '</span>' +
-           (sp != null ? '<span class="tsec-p">' + sp + '%</span>' : '') + '</div>';
-      if(sec.list.length){
-        h += '<div id="taskList' + si + '" class="mlist">';
-        sec.list.forEach(function(t, idx){
-          var period = (t.start || t.end) ? (md(t.start) + '〜' + md(t.end)) : '期間未設定';
-          h += '<div class="mrow trow' + (t.status === '完了' ? ' done' : '') + '" data-name="' + esc(t.id) + '">' +
-            ordHtml(idx, sec.list.length) +
-            '<div class="tno">' + (idx + 1) + '</div>' +
-            '<div class="tmain">' +
-              '<div class="tname">' + esc(t.name) + '</div>' +
-              '<div class="tsub"><span>' + period + '</span>' +
-                ((t.owners||[]).length ? '<span>' + t.owners.map(esc).join('・') + '</span>' : '') + '</div>' +
-              (t.result ? '<div class="tresult">' + esc(t.result) + '</div>' : '') +
-            '</div>' +
-            '<span class="pill pill-' + esc(t.status) + '">' + esc(t.status) + '</span></div>';
-        });
-        h += '</div>';
-      }
-      h += '<button type="button" class="btn btn-line btn-sm tk-addSec" data-owner="' + esc(sec.preset) + '"' +
-           ' style="margin:.4rem 0 .1rem">＋ ' + esc(sec.name) + 'にタスクを追加</button></div>';
-    });
-  }else{
+  if(!tasks.length){
     // 空の季節はゼロから入力させない。標準の工程か、過去の季節のコピーで一発投入できるようにする
-    // （タスクは季節が変わってもほぼ同じ、という運用前提）
+    // （タスクは季節が変わってもほぼ同じ、という運用前提。共通に入る）
     var srcs = copySources(p && p.id);
-    h += '<div class="hint" style="margin-bottom:.5rem">まだタスクがありません。毎回同じ工程なら、下のボタンでまとめて入れられます。</div>' +
-         '<div id="tkStarter" style="display:flex;gap:.5rem;flex-wrap:wrap">' +
+    h += '<div class="hint" style="margin-bottom:.5rem">まだタスクがありません。毎回同じ工程なら、下のボタンでまとめて入れられます（「共通」に入ります）。</div>' +
+         '<div id="tkStarter" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.7rem">' +
          '<button id="tk-seedBtn" class="btn btn-line btn-sm">標準の工程を入れる（' + SEED_TASKS.length + '件）</button>' +
          (srcs.length ? '<button id="tk-copyBtn" class="btn btn-line btn-sm">他の季節からコピー</button>' : '') +
-         '</div>' +
-         '<button id="tk-addBtn" class="btn btn-primary btn-sm" style="margin-top:.6rem">＋ タスクを追加</button>';
+         '</div>';
   }
-  h += '</div>';
+  h += '<div class="gmenu">';
+  secs.forEach(function(sec){
+    var sp = progressOf(sec.list);
+    h += '<button type="button" class="gentry" data-group="' + esc(sec.name) + '">' +
+      '<span class="ge-name">' + esc(sec.name) + '</span>' +
+      '<span class="ge-bar"><i style="width:' + (sp || 0) + '%"></i></span>' +
+      '<span class="ge-meta">' + (sec.list.length ? sec.list.length + '件' + (sp != null ? '・' + sp + '%' : '') : 'タスクなし') + '</span>' +
+      '<span class="ge-arrow">›</span></button>';
+  });
+  h += '</div></div>';
 
   q('planDetail').innerHTML = h;
-  // タスクの並び替え（ドラッグ・セクション内のみ）。names にはタスクIDが入る
-  secs.forEach(function(sec, si){
-    if(sec.list.length < 2) return;
-    initDragReorder('taskList' + si, function(ids){
+}
+
+// グループ画面：そのグループのタスクだけを一覧・追加・編集・並び替え
+function renderGroupView(){
+  var y = Number(PL.year), s = PL.season, g = PL.group;
+  var p = planOf(y, s);
+  var tasks = tasksOf(p && p.id);
+  var secs = splitSections(tasks, D.owners);
+  var sec = secs.filter(function(x){ return x.name === g; })[0];
+  if(!sec){ PL.group = null; renderPlanView(); return; }   // マスタで消された等
+  var sp = progressOf(sec.list);
+  var h = '<div class="panel">';
+  h += '<h3>' + esc(s) + 'メニュー ' + y + '年度 ・ ' + esc(g) + '</h3>';
+  if(sp != null){
+    h += '<div class="prog" style="margin-bottom:.7rem"><div class="prog-bar"><div class="prog-fill" style="width:' + sp + '%"></div></div>' +
+         '<span class="prog-num">' + sp + '%</span></div>';
+  }
+  if(sec.list.length){
+    h += '<div id="taskListG" class="mlist">';
+    sec.list.forEach(function(t, idx){
+      var period = (t.start || t.end) ? (md(t.start) + '〜' + md(t.end)) : '期間未設定';
+      h += '<div class="mrow trow' + (t.status === '完了' ? ' done' : '') + '" data-name="' + esc(t.id) + '">' +
+        ordHtml(idx, sec.list.length) +
+        '<div class="tno">' + (idx + 1) + '</div>' +
+        '<div class="tmain">' +
+          '<div class="tname">' + esc(t.name) + '</div>' +
+          '<div class="tsub"><span>' + period + '</span>' +
+            ((t.owners||[]).length ? '<span>' + t.owners.map(esc).join('・') + '</span>' : '') + '</div>' +
+          (t.result ? '<div class="tresult">' + esc(t.result) + '</div>' : '') +
+        '</div>' +
+        '<span class="pill pill-' + esc(t.status) + '">' + esc(t.status) + '</span></div>';
+    });
+    h += '</div>';
+  }else{
+    h += '<div class="hint" style="margin-bottom:.4rem">まだタスクがありません。</div>';
+  }
+  h += '<button type="button" class="btn btn-primary btn-sm tk-addSec" data-owner="' + esc(sec.preset) + '"' +
+       ' style="margin-top:.6rem">＋ タスクを追加</button></div>';
+
+  q('planDetail').innerHTML = h;
+  // 並び替え（ドラッグ）。names にはタスクIDが入る。このグループのタスクだけ順を振り直す
+  if(sec.list.length > 1){
+    initDragReorder('taskListG', function(ids){
       var planId = p && p.id;
       if(!planId) return;
       var by = {};
       (D.devTasks||[]).forEach(function(t){ by[t.id] = t; });
-      // 画面を先に並び替えて描き直し、サーバーへ反映（このセクションのタスクだけ順を振り直す）
       ids.forEach(function(id, i){ if(by[id]) by[id].order = i + 1; });
       D.devTasks.sort(function(a, b){ return a.order - b.order; });
       renderPlanDetail();
@@ -2745,7 +2780,7 @@ function renderPlanDetail(){
         .then(function(r){ D.devTasks = r.devTasks || []; })
         .catch(function(e){ toast(errMsg(e), true); return reload(); });
     }, function(){ return []; });
-  });
+  }
 }
 
 // タスクをグループごとのセクションに分ける。どのグループにも属さないものは「共通」
@@ -2779,6 +2814,13 @@ on(q('planDetail'), 'click', function(e){
   }
   if(t.id === 'tk-addBtn'){ openTaskModal(null); return; }
   if(t.classList.contains('tk-addSec')){ openTaskModal(null, t.dataset.owner || ''); return; }
+  var ge = e.target.closest('.gentry');
+  if(ge){
+    PL.group = ge.dataset.group;
+    renderPlanView();
+    window.scrollTo(0, 0);
+    return;
+  }
   if(t.id === 'tk-seedBtn'){
     bulkAddTasks(SEED_TASKS.map(function(n){ return { name:n, owners:[] }; }), t);
     return;
