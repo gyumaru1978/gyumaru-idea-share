@@ -181,6 +181,28 @@ img{max-width:100%;display:block}
 .tl-prog{position:absolute;left:0;top:0;bottom:0;background:rgba(4,120,87,.08);border-right:2px solid var(--brand);pointer-events:none}
 .tl-today{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--danger);pointer-events:none}
 .tl-arrow{flex:0 0 auto;width:1.3rem;text-align:center;font-size:1.05rem;color:var(--ink-faint)}
+
+/* ===== 開発計画の入口：四象限（春夏秋冬）=====
+   でっかい季節カード2×2。タップでその季節のロードマップへ。季節ごとの色で直感的に */
+.sgrid{display:grid;grid-template-columns:1fr 1fr;gap:.7rem;margin-bottom:.9rem}
+.scard{border-radius:14px;border:2px solid;padding:1rem .9rem;text-align:left;cursor:pointer;
+  display:flex;flex-direction:column;gap:.4rem;min-height:9.5rem;box-shadow:var(--shadow)}
+.scard:active{transform:scale(.98)}
+.scard .s-head{display:flex;align-items:baseline;justify-content:space-between}
+.scard .s-name{font-size:1.9rem;font-weight:900;letter-spacing:.1em;line-height:1}
+.scard .s-pct{font-size:1rem;font-weight:800}
+.scard .s-info{font-size:.72rem;font-weight:600;opacity:.85}
+.scard .s-bar{height:.5rem;background:rgba(255,255,255,.7);border-radius:999px;overflow:hidden;margin-top:auto}
+.scard .s-fill{height:100%;border-radius:999px}
+.scard .s-tasks{font-size:.7rem;font-weight:700;opacity:.8}
+.scard-春{background:#fdf2f8;border-color:#f9a8d4;color:#9d174d}
+.scard-春 .s-fill{background:#db2777}
+.scard-夏{background:#ecfeff;border-color:#67e8f9;color:#155e75}
+.scard-夏 .s-fill{background:#0891b2}
+.scard-秋{background:#fff7ed;border-color:#fdba74;color:#9a3412}
+.scard-秋 .s-fill{background:#ea580c}
+.scard-冬{background:#eef2ff;border-color:#a5b4fc;color:#3730a3}
+.scard-冬 .s-fill{background:#4f46e5}
 .tl-legend{display:flex;gap:1rem;margin-top:.5rem;font-size:.68rem;color:var(--ink-muted);flex-wrap:wrap}
 .tl-legend .tl-i{display:inline-block;width:.85rem;height:.55rem;border-radius:3px;margin-right:.25rem;vertical-align:middle}
 .tl-i-dev{background:#a7f3d0;border:1px solid #34d399}
@@ -581,12 +603,14 @@ img{max-width:100%;display:block}
      階層構造：まず春夏秋冬の一覧（年間タイムライン）→ 季節をタップするとロードマップ（タスク） -->
 <section id="view-plan" class="hidden">
   <div id="planHome">
+    <!-- 入口は四象限の春夏秋冬。タップでその季節のロードマップへ -->
+    <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:.6rem">
+      <select id="planYear" style="padding:.4rem .55rem;border:1px solid var(--line);border-radius:8px;font-size:.9rem;font-weight:700;background:#fff"></select>
+    </div>
+    <div id="seasonGrid" class="sgrid"></div>
+    <!-- 年間計画表（ガントチャート）は四象限とは別物として下に置く -->
     <div class="panel">
-      <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:.6rem">
-        <h3 style="margin:0;padding:0;border:none">年間計画</h3>
-        <select id="planYear" style="padding:.35rem .5rem;border:1px solid var(--line);border-radius:8px;font-size:.85rem"></select>
-      </div>
-      <p style="font-size:.75rem;color:var(--ink-faint);margin-bottom:.5rem">季節をタップすると、その季節のタスク（ロードマップ）が開きます。</p>
+      <h3>年間計画表（ガントチャート）</h3>
       <!-- 横軸は5月〜翌4月。各季節の行に開発期間・提供期間の帯と進捗、今日の位置を描く -->
       <div id="timeline"></div>
       <div class="tl-legend">
@@ -2502,7 +2526,29 @@ function renderPlanView(){
     return '<option value="' + y + '"' + (y === Number(PL.year) ? ' selected' : '') + '>' +
       y + '年度（' + y + '/5〜' + (y + 1) + '/4）</option>';
   }).join('');
+  renderSeasonGrid();
   renderTimeline();
+}
+
+// 入口の四象限。季節名を大きく、期間・進捗・タスク数を添える
+function renderSeasonGrid(){
+  var y = Number(PL.year);
+  q('seasonGrid').innerHTML = (D.seasons||['春','夏','秋','冬']).map(function(s){
+    var p = planOf(y, s);
+    var tasks = tasksOf(p && p.id);
+    var done = tasks.filter(function(t){ return t.status === '完了'; }).length;
+    var prog = progressOf(tasks);
+    var serve = p && p.serveStart ? '提供 ' + md(p.serveStart) + '〜' + md(p.serveEnd) : '提供期間 未設定';
+    var dev = p && p.devStart ? '開発 ' + md(p.devStart) + '〜' + md(p.devEnd) : '開発期間 未設定';
+    return '<button type="button" class="scard scard-' + s + '" data-season="' + s + '">' +
+      '<div class="s-head"><span class="s-name">' + s + '</span>' +
+        (prog != null ? '<span class="s-pct">' + prog + '%</span>' : '') + '</div>' +
+      '<div class="s-info">' + esc(serve) + '</div>' +
+      '<div class="s-info">' + esc(dev) + '</div>' +
+      '<div class="s-bar"><div class="s-fill" style="width:' + (prog || 0) + '%"></div></div>' +
+      '<div class="s-tasks">' + (tasks.length ? 'タスク ' + tasks.length + '件（完了 ' + done + '）' : 'タスク未登録') + '</div>' +
+      '</button>';
+  }).join('');
 }
 
 function renderTimeline(){
@@ -2546,6 +2592,13 @@ function renderTimeline(){
 on(q('planYear'), 'change', function(){
   PL.year = Number(q('planYear').value);
   renderPlanView();
+});
+on(q('seasonGrid'), 'click', function(e){
+  var card = e.target.closest('.scard');
+  if(!card) return;
+  PL.season = card.dataset.season;
+  renderPlanView();
+  window.scrollTo(0, 0);
 });
 on(q('timeline'), 'click', function(e){
   var row = e.target.closest('.tl-row');
@@ -2641,7 +2694,7 @@ on(q('planDetail'), 'click', function(e){
       memo: q('pd-memo').value
     }).then(function(r){
       D.plans = r.plans || [];
-      renderTimeline(); renderPlanDetail();
+      renderSeasonGrid(); renderTimeline(); renderPlanDetail();
       toast('保存しました');
     }).catch(function(err){ t.disabled = false; toast(errMsg(err), true); });
     return;
@@ -2681,7 +2734,7 @@ function bulkAddTasks(tasks, btn){
   gsRun('addDevTasksBulk', { year:String(PL.year), season:PL.season, tasks:tasks })
     .then(function(r){
       D.plans = r.plans || D.plans; D.devTasks = r.devTasks || [];
-      renderTimeline(); renderPlanDetail(); renderOwnerList();
+      renderSeasonGrid(); renderTimeline(); renderPlanDetail(); renderOwnerList();
       toast(tasks.length + '件のタスクを入れました');
     })
     .catch(function(e){ btn.disabled = false; toast(errMsg(e), true); });
@@ -2738,7 +2791,7 @@ on(q('tk-save'), 'click', function(){
     .then(function(r){
       D.plans = r.plans || D.plans; D.devTasks = r.devTasks || [];
       q('taskM').classList.add('hidden');
-      renderTimeline(); renderPlanDetail(); renderOwnerList();
+      renderSeasonGrid(); renderTimeline(); renderPlanDetail(); renderOwnerList();
       toast('保存しました');
     })
     .catch(function(e){ toast(errMsg(e), true); })
@@ -2751,7 +2804,7 @@ on(q('tk-del'), 'click', function(){
     gsRun('deleteDevTask', id).then(function(r){
       D.plans = r.plans || D.plans; D.devTasks = r.devTasks || [];
       q('taskM').classList.add('hidden');
-      renderTimeline(); renderPlanDetail(); renderOwnerList();
+      renderSeasonGrid(); renderTimeline(); renderPlanDetail(); renderOwnerList();
       toast('削除しました');
     }).catch(function(e){ toast(errMsg(e), true); });
   });
