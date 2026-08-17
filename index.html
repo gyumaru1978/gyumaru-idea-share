@@ -167,34 +167,38 @@ img{max-width:100%;display:block}
 /* ===== 開発計画（年間タイムライン） =====
    横軸は5月〜翌4月の12ヶ月。季節ごとに1行で、開発期間と提供期間の帯を重ねて描く。
    位置はJSが年度内の日数割合(%)で計算する。 */
-.tl-months{display:flex;margin-left:5.2rem;margin-right:1.3rem;border-bottom:1px solid var(--line)}
-.tl-months span{flex:1;font-size:.6rem;color:var(--ink-faint);text-align:left;padding:.15rem 0 .2rem;border-left:1px dotted var(--line)}
-.tl-row{display:flex;align-items:center;gap:0;margin:.45rem 0;cursor:pointer;border-radius:8px}
+.tl-months{display:flex;margin-left:6.2rem;margin-right:1.4rem;border-bottom:1px solid var(--line)}
+.tl-months span{flex:1;font-size:.7rem;font-weight:600;color:var(--ink-muted);text-align:left;padding:.25rem 0 .3rem;border-left:1px dotted var(--line)}
+.tl-row{display:flex;align-items:center;gap:0;margin:.6rem 0;cursor:pointer;border-radius:10px}
 .tl-row:hover{background:var(--bg)}
 .tl-row.sel{background:var(--brand-tint)}
-.tl-name{flex:0 0 5.2rem;font-size:.8rem;font-weight:700;padding:.3rem .4rem}
-.tl-name .tl-pct{display:block;font-size:.66rem;font-weight:700;color:var(--brand-dark)}
-.tl-track{flex:1;position:relative;height:2.1rem;background:repeating-linear-gradient(90deg,transparent,transparent calc(100%/12 - 1px),var(--line) calc(100%/12 - 1px),var(--line) calc(100%/12))}
-.tl-band{position:absolute;border-radius:4px}
-.tl-dev{top:.2rem;height:.7rem;background:#a7f3d0;border:1px solid #34d399}
-.tl-serve{bottom:.2rem;height:.7rem;background:var(--brand);opacity:.85}
-.tl-prog{position:absolute;left:0;top:0;bottom:0;background:rgba(4,120,87,.08);border-right:2px solid var(--brand);pointer-events:none}
-.tl-today{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--danger);pointer-events:none}
-.tl-arrow{flex:0 0 auto;width:1.3rem;text-align:center;font-size:1.05rem;color:var(--ink-faint)}
+.tl-name{flex:0 0 6.2rem;font-size:1.05rem;font-weight:800;padding:.4rem .5rem}
+.tl-name .tl-pct{display:block;font-size:.8rem;font-weight:800;color:var(--brand-dark)}
+.tl-track{flex:1;position:relative;height:3.3rem;background:repeating-linear-gradient(90deg,transparent,transparent calc(100%/12 - 1px),var(--line) calc(100%/12 - 1px),var(--line) calc(100%/12))}
+.tl-band{position:absolute;border-radius:5px}
+.tl-dev{top:.35rem;height:1.05rem;background:#a7f3d0;border:1px solid #34d399}
+.tl-serve{bottom:.35rem;height:1.05rem;background:var(--brand);opacity:.85}
+.tl-prog{position:absolute;left:0;top:0;bottom:0;background:rgba(4,120,87,.08);border-right:3px solid var(--brand);pointer-events:none}
+.tl-today{position:absolute;top:-3px;bottom:-3px;width:3px;background:var(--danger);border-radius:2px;pointer-events:none}
+.tl-arrow{flex:0 0 auto;width:1.4rem;text-align:center;font-size:1.2rem;color:var(--ink-faint)}
 
 /* ===== 開発計画の入口：四象限（春夏秋冬）=====
    でっかい季節カード2×2。タップでその季節のロードマップへ。季節ごとの色で直感的に */
-.sgrid{display:grid;grid-template-columns:1fr 1fr;gap:.7rem;margin-bottom:.9rem}
-.scard{border-radius:14px;border:2px solid;padding:1rem .9rem;text-align:left;cursor:pointer;
-  display:flex;flex-direction:column;gap:.4rem;min-height:9.5rem;box-shadow:var(--shadow)}
+.sgrid{display:grid;grid-template-columns:1fr 1fr;gap:.85rem;margin-bottom:1rem}
+.scard{border-radius:18px;border:2.5px solid;padding:1.25rem 1.1rem;text-align:left;cursor:pointer;
+  display:flex;flex-direction:column;gap:.55rem;min-height:12.5rem;box-shadow:var(--shadow)}
 .scard:active{transform:scale(.98)}
 .scard .s-head{display:flex;align-items:baseline;justify-content:space-between}
-.scard .s-name{font-size:1.9rem;font-weight:900;letter-spacing:.1em;line-height:1}
-.scard .s-pct{font-size:1rem;font-weight:800}
-.scard .s-info{font-size:.72rem;font-weight:600;opacity:.85}
-.scard .s-bar{height:.5rem;background:rgba(255,255,255,.7);border-radius:999px;overflow:hidden;margin-top:auto}
+.scard .s-name{font-size:2.7rem;font-weight:900;letter-spacing:.12em;line-height:1}
+.scard .s-pct{font-size:1.4rem;font-weight:900}
+.scard .s-info{font-size:.82rem;font-weight:700;opacity:.85}
+.scard .s-bar{height:.7rem;background:rgba(255,255,255,.75);border-radius:999px;overflow:hidden;margin-top:auto}
 .scard .s-fill{height:100%;border-radius:999px}
-.scard .s-tasks{font-size:.7rem;font-weight:700;opacity:.8}
+.scard .s-tasks{font-size:.78rem;font-weight:800;opacity:.85}
+@media(min-width:760px){
+  .scard{min-height:14rem;padding:1.5rem 1.3rem}
+  .scard .s-name{font-size:3.4rem}
+}
 .scard-春{background:#fdf2f8;border-color:#f9a8d4;color:#9d174d}
 .scard-春 .s-fill{background:#db2777}
 .scard-夏{background:#ecfeff;border-color:#67e8f9;color:#155e75}
@@ -203,12 +207,12 @@ img{max-width:100%;display:block}
 .scard-秋 .s-fill{background:#ea580c}
 .scard-冬{background:#eef2ff;border-color:#a5b4fc;color:#3730a3}
 .scard-冬 .s-fill{background:#4f46e5}
-.tl-legend{display:flex;gap:1rem;margin-top:.5rem;font-size:.68rem;color:var(--ink-muted);flex-wrap:wrap}
+.tl-legend{display:flex;gap:1rem;margin-top:.6rem;font-size:.75rem;color:var(--ink-muted);flex-wrap:wrap}
 .tl-legend .tl-i{display:inline-block;width:.85rem;height:.55rem;border-radius:3px;margin-right:.25rem;vertical-align:middle}
 .tl-i-dev{background:#a7f3d0;border:1px solid #34d399}
 .tl-i-serve{background:var(--brand);opacity:.85}
 .tl-i-today{background:var(--danger);width:2px !important;height:.85rem}
-.tl-empty{font-size:.72rem;color:var(--ink-faint);position:absolute;left:.5rem;top:50%;transform:translateY(-50%)}
+.tl-empty{font-size:.78rem;color:var(--ink-faint);position:absolute;left:.5rem;top:50%;transform:translateY(-50%)}
 
 /* 進捗バー（季節詳細の見出しに出す） */
 .prog{display:flex;align-items:center;gap:.5rem}
