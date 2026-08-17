@@ -220,6 +220,14 @@ img{max-width:100%;display:block}
 .prog .prog-fill{height:100%;background:var(--brand);border-radius:999px}
 .prog .prog-num{font-size:.78rem;font-weight:800;color:var(--brand-dark);flex:0 0 auto}
 
+/* グループ（担当）ごとのセクション見出し */
+.tsec{margin:.7rem 0 .9rem}
+.tsec-h{display:flex;align-items:center;gap:.55rem;padding:.5rem .7rem;margin-bottom:.35rem;
+  background:var(--brand-tint);border-left:4px solid var(--brand);border-radius:8px;
+  font-size:.9rem;font-weight:800;color:var(--brand-dark)}
+.tsec-h .tsec-n{font-size:.72rem;font-weight:700;color:var(--ink-muted)}
+.tsec-h .tsec-p{margin-left:auto;font-size:.82rem;font-weight:800}
+
 /* タスク行（ロードマップ）。マスタ行(.mrow)と同じ操作感＋タップで編集 */
 .trow{display:flex;align-items:center;gap:.5rem;padding:.55rem .5rem;border-bottom:1px solid var(--line);cursor:pointer}
 .trow:hover{background:var(--bg)}
@@ -2677,24 +2685,36 @@ function renderPlanDetail(){
        '<button id="pd-save" class="btn btn-line btn-sm" style="margin-top:.6rem">日程を保存</button>';
   h += '</div>';
 
-  // ロードマップ（タスク一覧）
+  // ロードマップ。グループ（担当マスタ）ごとのセクションに分ける。
+  // どのグループにも属さないタスクは「共通」（標準の工程はここに入る）
   h += '<div class="panel"><h3>ロードマップ（タスク）</h3>';
+  var secs = splitSections(tasks, D.owners);
   if(tasks.length){
-    h += '<div id="taskList" class="mlist">';
-    tasks.forEach(function(t, idx){
-      var period = (t.start || t.end) ? (md(t.start) + '〜' + md(t.end)) : '期間未設定';
-      h += '<div class="mrow trow' + (t.status === '完了' ? ' done' : '') + '" data-name="' + esc(t.id) + '">' +
-        ordHtml(idx, tasks.length) +
-        '<div class="tno">' + (idx + 1) + '</div>' +
-        '<div class="tmain">' +
-          '<div class="tname">' + esc(t.name) + '</div>' +
-          '<div class="tsub"><span>' + period + '</span>' +
-            ((t.owners||[]).length ? '<span>' + t.owners.map(esc).join('・') + '</span>' : '') + '</div>' +
-          (t.result ? '<div class="tresult">' + esc(t.result) + '</div>' : '') +
-        '</div>' +
-        '<span class="pill pill-' + esc(t.status) + '">' + esc(t.status) + '</span></div>';
+    secs.forEach(function(sec, si){
+      var sp = progressOf(sec.list);
+      h += '<div class="tsec"><div class="tsec-h"><span>' + esc(sec.name) + '</span>' +
+           '<span class="tsec-n">' + (sec.list.length ? sec.list.length + '件' : '') + '</span>' +
+           (sp != null ? '<span class="tsec-p">' + sp + '%</span>' : '') + '</div>';
+      if(sec.list.length){
+        h += '<div id="taskList' + si + '" class="mlist">';
+        sec.list.forEach(function(t, idx){
+          var period = (t.start || t.end) ? (md(t.start) + '〜' + md(t.end)) : '期間未設定';
+          h += '<div class="mrow trow' + (t.status === '完了' ? ' done' : '') + '" data-name="' + esc(t.id) + '">' +
+            ordHtml(idx, sec.list.length) +
+            '<div class="tno">' + (idx + 1) + '</div>' +
+            '<div class="tmain">' +
+              '<div class="tname">' + esc(t.name) + '</div>' +
+              '<div class="tsub"><span>' + period + '</span>' +
+                ((t.owners||[]).length ? '<span>' + t.owners.map(esc).join('・') + '</span>' : '') + '</div>' +
+              (t.result ? '<div class="tresult">' + esc(t.result) + '</div>' : '') +
+            '</div>' +
+            '<span class="pill pill-' + esc(t.status) + '">' + esc(t.status) + '</span></div>';
+        });
+        h += '</div>';
+      }
+      h += '<button type="button" class="btn btn-line btn-sm tk-addSec" data-owner="' + esc(sec.preset) + '"' +
+           ' style="margin:.4rem 0 .1rem">＋ ' + esc(sec.name) + 'にタスクを追加</button></div>';
     });
-    h += '</div>';
   }else{
     // 空の季節はゼロから入力させない。標準の工程か、過去の季節のコピーで一発投入できるようにする
     // （タスクは季節が変わってもほぼ同じ、という運用前提）
@@ -2703,26 +2723,42 @@ function renderPlanDetail(){
          '<div id="tkStarter" style="display:flex;gap:.5rem;flex-wrap:wrap">' +
          '<button id="tk-seedBtn" class="btn btn-line btn-sm">標準の工程を入れる（' + SEED_TASKS.length + '件）</button>' +
          (srcs.length ? '<button id="tk-copyBtn" class="btn btn-line btn-sm">他の季節からコピー</button>' : '') +
-         '</div>';
+         '</div>' +
+         '<button id="tk-addBtn" class="btn btn-primary btn-sm" style="margin-top:.6rem">＋ タスクを追加</button>';
   }
-  h += '<button id="tk-addBtn" class="btn btn-primary btn-sm" style="margin-top:.6rem">＋ タスクを追加</button></div>';
+  h += '</div>';
 
   q('planDetail').innerHTML = h;
-  // タスクの並び替え（ドラッグ）。names にはタスクIDが入る
-  initDragReorder('taskList', function(ids){
-    var by = {};
-    tasks.forEach(function(t){ by[t.id] = t; });
-    var planId = p && p.id;
-    if(!planId) return;
-    // 画面を先に並び替えて描き直し、サーバーへ反映
-    var sorted = ids.map(function(id){ return by[id]; }).filter(Boolean);
-    sorted.forEach(function(t, i){ t.order = i + 1; });
-    D.devTasks.sort(function(a, b){ return a.order - b.order; });
-    renderPlanDetail();
-    gsRun('reorderDevTasks', planId, ids)
-      .then(function(r){ D.devTasks = r.devTasks || []; })
-      .catch(function(e){ toast(errMsg(e), true); return reload(); });
-  }, function(){ return []; });
+  // タスクの並び替え（ドラッグ・セクション内のみ）。names にはタスクIDが入る
+  secs.forEach(function(sec, si){
+    if(sec.list.length < 2) return;
+    initDragReorder('taskList' + si, function(ids){
+      var planId = p && p.id;
+      if(!planId) return;
+      var by = {};
+      (D.devTasks||[]).forEach(function(t){ by[t.id] = t; });
+      // 画面を先に並び替えて描き直し、サーバーへ反映（このセクションのタスクだけ順を振り直す）
+      ids.forEach(function(id, i){ if(by[id]) by[id].order = i + 1; });
+      D.devTasks.sort(function(a, b){ return a.order - b.order; });
+      renderPlanDetail();
+      gsRun('reorderDevTasks', planId, ids)
+        .then(function(r){ D.devTasks = r.devTasks || []; })
+        .catch(function(e){ toast(errMsg(e), true); return reload(); });
+    }, function(){ return []; });
+  });
+}
+
+// タスクをグループごとのセクションに分ける。どのグループにも属さないものは「共通」
+function splitSections(tasks, groups){
+  var matched = {};
+  var secs = (groups||[]).map(function(g){
+    var list = (tasks||[]).filter(function(t){ return (t.owners||[]).indexOf(g) >= 0; });
+    list.forEach(function(t){ matched[t.id] = 1; });
+    return { name: g, preset: g, list: list };
+  });
+  var common = (tasks||[]).filter(function(t){ return !matched[t.id]; });
+  secs.unshift({ name: '共通', preset: '', list: common });
+  return secs;
 }
 
 on(q('planDetail'), 'click', function(e){
@@ -2742,6 +2778,7 @@ on(q('planDetail'), 'click', function(e){
     return;
   }
   if(t.id === 'tk-addBtn'){ openTaskModal(null); return; }
+  if(t.classList.contains('tk-addSec')){ openTaskModal(null, t.dataset.owner || ''); return; }
   if(t.id === 'tk-seedBtn'){
     bulkAddTasks(SEED_TASKS.map(function(n){ return { name:n, owners:[] }; }), t);
     return;
@@ -2783,15 +2820,17 @@ function bulkAddTasks(tasks, btn){
 }
 
 // ---- タスクの追加・編集モーダル ----
-function openTaskModal(taskId){
+// presetOwner: セクションの「＋」から開いたとき、そのグループを担当に入れた状態で始める
+function openTaskModal(taskId, presetOwner){
   TK_EDIT = taskId || null;
   var t = TK_EDIT ? (D.devTasks||[]).filter(function(x){ return x.id === TK_EDIT; })[0] : null;
-  q('tk-title').textContent = t ? 'タスクを編集' : 'タスクを追加（' + PL.season + ' ' + PL.year + '年度）';
+  q('tk-title').textContent = t ? 'タスクを編集'
+    : 'タスクを追加（' + PL.season + ' ' + PL.year + '年度' + (presetOwner ? '・' + presetOwner : '') + '）';
   q('tk-name').value = t ? t.name : '';
   q('tk-start').value = d2i(t && t.start);
   q('tk-end').value = d2i(t && t.end);
   q('tk-result').value = t ? t.result : '';
-  TK_OWNERS = t ? (t.owners||[]).slice() : [];
+  TK_OWNERS = t ? (t.owners||[]).slice() : (presetOwner ? [presetOwner] : []);
   TK_STATUS = t ? t.status : '未着手';
   renderTkPicks();
   q('tk-del').classList.toggle('hidden', !t);

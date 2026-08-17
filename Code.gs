@@ -225,10 +225,11 @@ const SEASONS = ['春', '夏', '秋', '冬'];
 const TASK_STATUS_OPTIONS = ['未着手', '進行中', '完了'];
 const TASK_STATUS_DEFAULT = '未着手';
 
-// タスクの担当マスタ。店舗マスタとは別物（エリアや社長など、店舗より粗い単位で持つ）。
-// 顔ぶれはよく変わる想定なので、マスタ画面から追加・改名・削除・並び替え自由。
+// タスクの担当マスタ（＝開発グループ）。店舗マスタとは別物。
+// ロードマップはこのグループごとのセクションに分かれる。顔ぶれはよく変わる想定なので、
+// マスタ画面から追加・改名・削除・並び替え自由（改名はタスクへ一括反映）。
 const OWNER_HEADER = '担当名';
-const OWNER_SEED   = ['社長', '長崎エリア', '佐賀エリア', '福岡エリア'];
+const OWNER_SEED   = ['社長', '佐賀・長崎エリア', '福岡エリア'];
 
 function doGet(e) {
   return HtmlService.createHtmlOutputFromFile('index')
@@ -566,6 +567,7 @@ function getOwnerSheet_() {
 // 見逃す方向には壊れないので実害は小さい。
 function getInitialData_() {
   cleanupLegacySheets_();
+  migrateOwners_();
   const ideas = getIdeas_();
   return {
     ideas: ideas,
@@ -2112,6 +2114,22 @@ function reorderDevTasks_(planId, taskIds) {
 }
 
 // ---- 担当マスタ ----
+// 統合移行（2026-08: 長崎エリア＋佐賀エリア → 佐賀・長崎エリア）。
+// 旧名がマスタに残っていたら改名・統合し、タスクの担当も書き換える。
+// 一度走れば旧名は無くなるので、毎回呼んでも何もしない（アプリを開いたときに実行）。
+function migrateOwners_() {
+  const merged = '佐賀・長崎エリア';
+  const olds = ['長崎エリア', '佐賀エリア'];
+  const list = getOwnerList_();
+  if (!olds.some(o => list.indexOf(o) >= 0)) return;
+  const sh = getOwnerSheet_();
+  olds.forEach(o => {
+    if (getOwnerList_().indexOf(o) < 0) return;
+    renameInMasterColumn_(sh, o, merged);   // 統合先が既にあれば旧行は消える
+    rewriteOwnerColumn_(o, merged);
+  });
+}
+
 function addOwner_(name) {
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
