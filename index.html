@@ -1147,8 +1147,7 @@ on(q('stats'), 'click', function(e){
   var t = e.target.closest('.stat');
   if(!t) return;
   var f = t.dataset.filter;
-  if(f === 'all'){ F.status = ''; }                          // 全表示＝ステータス絞り込み解除
-  else { F.status = (F.status === f) ? '' : f; }             // 採用／アイデア（再クリックで解除）
+  F.status = (F.status === f) ? '' : f;   // 採用／アイデア。再クリックで解除＝全部表示
   saveFilter();
   render();
 });
@@ -1344,8 +1343,8 @@ function renderStats(rows, base){
     return '<button class="stat' + (active ? ' on' : '') + '" data-filter="' + filter + '">' +
       '<b>' + num + '</b><span>' + label + '</span></button>';
   }
+  // タイルは採用／アイデアの2つだけ。選択中のタイルをもう一度タップすると解除＝全部表示
   q('stats').innerHTML =
-    tile('all', base.length, '全表示', !F.status) +
     tile('採用', count('採用'), '採用', F.status === '採用') +
     tile('アイデア', count('アイデア'), 'アイデア', F.status === 'アイデア');
 }
@@ -2444,6 +2443,15 @@ function fyOf(dstr){
 function planOf(year, season){
   return (D.plans||[]).filter(function(p){ return String(p.year) === String(year) && p.season === season; })[0] || null;
 }
+// 空の季節に一発投入する標準の工程。入れた後は自由に編集・削除できる
+var SEED_TASKS = ['市場調査', 'メニュー案出し', '試作', '試食会・決定', '原価計算・売価決定',
+                  'オペレーション確認', '撮影・ポスター作成', '提供開始'];
+// コピー元にできる計画（タスクを持っていて、いま開いている計画ではないもの）
+function copySources(excludePlanId){
+  return (D.plans||[]).map(function(p){
+    return { plan: p, count: tasksOf(p.id).length };
+  }).filter(function(s){ return s.count > 0 && s.plan.id !== excludePlanId; });
+}
 function tasksOf(planId){
   if(!planId) return [];
   return (D.devTasks||[]).filter(function(t){ return t.planId === planId; });
@@ -2593,7 +2601,14 @@ function renderPlanDetail(){
     });
     h += '</div>';
   }else{
-    h += '<div class="hint" style="margin-bottom:.5rem">まだタスクがありません。「①市場調査」のように工程を追加していきます。</div>';
+    // 空の季節はゼロから入力させない。標準の工程か、過去の季節のコピーで一発投入できるようにする
+    // （タスクは季節が変わってもほぼ同じ、という運用前提）
+    var srcs = copySources(p && p.id);
+    h += '<div class="hint" style="margin-bottom:.5rem">まだタスクがありません。毎回同じ工程なら、下のボタンでまとめて入れられます。</div>' +
+         '<div id="tkStarter" style="display:flex;gap:.5rem;flex-wrap:wrap">' +
+         '<button id="tk-seedBtn" class="btn btn-line btn-sm">標準の工程を入れる（' + SEED_TASKS.length + '件）</button>' +
+         (srcs.length ? '<button id="tk-copyBtn" class="btn btn-line btn-sm">他の季節からコピー</button>' : '') +
+         '</div>';
   }
   h += '<button id="tk-addBtn" class="btn btn-primary btn-sm" style="margin-top:.6rem">＋ タスクを追加</button></div>';
 
@@ -2632,9 +2647,45 @@ on(q('planDetail'), 'click', function(e){
     return;
   }
   if(t.id === 'tk-addBtn'){ openTaskModal(null); return; }
+  if(t.id === 'tk-seedBtn'){
+    bulkAddTasks(SEED_TASKS.map(function(n){ return { name:n, owners:[] }; }), t);
+    return;
+  }
+  if(t.id === 'tk-copyBtn'){
+    // コピー元の選択肢をその場に出す（季節×年度・タスク件数）
+    var p = planOf(PL.year, PL.season);
+    var srcs = copySources(p && p.id);
+    q('tkStarter').innerHTML = '<div class="f" style="width:100%"><label>どの季節からコピーしますか？</label>' +
+      '<div class="picks">' + srcs.map(function(s2){
+        return '<button type="button" class="pick tk-copySrc" data-plan="' + esc(s2.plan.id) + '">' +
+          esc(s2.plan.season) + ' ' + esc(s2.plan.year) + '年度（' + s2.count + '件）</button>';
+      }).join('') +
+      '<button type="button" class="pick" id="tk-copyCancel">キャンセル</button></div></div>';
+    return;
+  }
+  if(t.id === 'tk-copyCancel'){ renderPlanDetail(); return; }
+  if(t.classList.contains('tk-copySrc')){
+    // タスク名・担当・並び順をコピー。日付・状態・結果は新しい季節用にまっさらにする
+    var src = tasksOf(t.dataset.plan);
+    bulkAddTasks(src.map(function(x){ return { name:x.name, owners:(x.owners||[]).slice() }; }), t);
+    return;
+  }
   var row = e.target.closest('.trow');
   if(row && !e.target.closest('.drag-handle')) openTaskModal(row.dataset.name);
 });
+
+// タスクの一括投入（標準工程・他の季節からのコピー）
+function bulkAddTasks(tasks, btn){
+  if(!tasks.length){ toast('コピーできるタスクがありません', true); return; }
+  btn.disabled = true;
+  gsRun('addDevTasksBulk', { year:String(PL.year), season:PL.season, tasks:tasks })
+    .then(function(r){
+      D.plans = r.plans || D.plans; D.devTasks = r.devTasks || [];
+      renderTimeline(); renderPlanDetail(); renderOwnerList();
+      toast(tasks.length + '件のタスクを入れました');
+    })
+    .catch(function(e){ btn.disabled = false; toast(errMsg(e), true); });
+}
 
 // ---- タスクの追加・編集モーダル ----
 function openTaskModal(taskId){

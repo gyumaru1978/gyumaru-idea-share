@@ -276,6 +276,7 @@ function apiCall(passcode, action, args) {
     case 'reorderCategories':return reorderCategories_(args[0]);
     case 'savePlan':         return savePlan_(args[0]);
     case 'addDevTask':       return addDevTask_(args[0]);
+    case 'addDevTasksBulk':  return addDevTasksBulk_(args[0]);
     case 'updateDevTask':    return updateDevTask_(args[0], args[1]);
     case 'deleteDevTask':    return deleteDevTask_(args[0]);
     case 'reorderDevTasks':  return reorderDevTasks_(args[0], args[1]);
@@ -1890,7 +1891,7 @@ function getOwnerList_() {
 }
 
 // 計画ID・タスクIDの採番。既存IDの最大値+1（P0001 / T0001 形式）
-function nextPrefixedId_(sh, col, prefix) {
+function maxPrefixedNum_(sh, col, prefix) {
   const lastRow = sh.getLastRow();
   let max = 0;
   if (lastRow >= 2) {
@@ -1899,7 +1900,10 @@ function nextPrefixedId_(sh, col, prefix) {
       if (m) max = Math.max(max, Number(m[1]));
     });
   }
-  return prefix + ('0000' + (max + 1)).slice(-4);
+  return max;
+}
+function nextPrefixedId_(sh, col, prefix) {
+  return prefix + ('0000' + (maxPrefixedNum_(sh, col, prefix) + 1)).slice(-4);
 }
 
 // 年度＋季節の計画行を返す（無ければ作る）。タスク追加時に日程未設定でも困らないように。
@@ -1990,6 +1994,44 @@ function addDevTask_(data) {
     row[DEVTASK_COL.updatedAt - 1] = nowStr_();
     DEVTASK_TEXT_COLS.forEach(col => sh.getRange(rowNum, col, 1, 1).setNumberFormat('@'));
     sh.getRange(rowNum, 1, 1, DEVTASK_HEADERS.length).setValues([row]);
+    return { plans: getPlanList_(), devTasks: getDevTaskList_() };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// タスクの一括追加（標準工程の投入・他の季節からのコピー用）。
+// data = { year, season, tasks: [{ name, owners[] }] }
+// 状態は未着手・日付と結果は空で入れる（コピー元の進捗を引きずらないため）。
+function addDevTasksBulk_(data) {
+  data = data || {};
+  const items = (data.tasks || [])
+    .map(t => ({ name: String(t && t.name || '').trim(), owners: (t && t.owners) || [] }))
+    .filter(t => t.name);
+  if (!items.length) throw new Error('追加するタスクがありません');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const plan = ensurePlan_(data.year, data.season);
+    const sh = getDevTaskSheet_();
+    let order = getDevTaskList_().filter(t => t.planId === plan.id)
+      .reduce((m, t) => Math.max(m, t.order), 0);
+    let seq = maxPrefixedNum_(sh, DEVTASK_COL.id, 'T');
+    const now = nowStr_();
+    const startRow = sh.getLastRow() + 1;
+    const rows = items.map(t => {
+      const row = new Array(DEVTASK_HEADERS.length).fill('');
+      row[DEVTASK_COL.id - 1] = 'T' + ('0000' + (++seq)).slice(-4);
+      row[DEVTASK_COL.planId - 1] = plan.id;
+      row[DEVTASK_COL.order - 1] = ++order;
+      row[DEVTASK_COL.name - 1] = t.name;
+      row[DEVTASK_COL.owners - 1] = joinList_(t.owners);
+      row[DEVTASK_COL.status - 1] = TASK_STATUS_DEFAULT;
+      row[DEVTASK_COL.updatedAt - 1] = now;
+      return row;
+    });
+    DEVTASK_TEXT_COLS.forEach(col => sh.getRange(startRow, col, rows.length, 1).setNumberFormat('@'));
+    sh.getRange(startRow, 1, rows.length, DEVTASK_HEADERS.length).setValues(rows);
     return { plans: getPlanList_(), devTasks: getDevTaskList_() };
   } finally {
     lock.releaseLock();
