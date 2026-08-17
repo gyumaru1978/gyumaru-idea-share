@@ -668,6 +668,24 @@ img{max-width:100%;display:block}
 
 <div id="toast"></div>
 
+<!-- ========== 確認・入力ダイアログ ==========
+     GASの埋め込みiframe内（特にスマホ）では標準の confirm()/prompt() がブロックされて
+     何も起きないことがあるため、アプリ内モーダルで確認・入力する。detail(z:50)より前面に出す。 -->
+<div id="askM" class="mbg hidden" style="z-index:60">
+  <div class="mbox narrow">
+    <div class="mhead"><h2 id="ask-title">確認</h2><button class="x" id="ask-x" type="button">✕</button></div>
+    <div class="mbody">
+      <div id="ask-msg" style="font-size:.9rem;line-height:1.75;white-space:pre-wrap"></div>
+      <input id="ask-input" class="hidden" style="margin-top:.7rem;width:100%;padding:.6rem .7rem;
+        border:1px solid var(--line);border-radius:8px;font-size:1rem">
+    </div>
+    <div class="mfoot">
+      <button id="ask-no" class="btn btn-ghost" type="button">キャンセル</button>
+      <button id="ask-yes" class="btn btn-primary" type="button">OK</button>
+    </div>
+  </div>
+</div>
+
 <!-- 材料の単位入力の候補。材料行より前にDOMへ置いておく必要がある -->
 <datalist id="unitList">
   <option value="g"></option><option value="kg"></option><option value="ml"></option><option value="L"></option>
@@ -773,6 +791,46 @@ function toast(msg, isErr){
   clearTimeout(toastTimer);
   toastTimer = setTimeout(function(){ t.className = ''; }, isErr ? 4500 : 2200);
 }
+
+// ---- アプリ内 確認／入力ダイアログ ----
+// 標準の confirm()/prompt() はGASのiframe（特にスマホ）でブロックされ「押しても無反応」に
+// なるため使わない。askConfirm は onYes を、askPrompt は onOk(値) をコールバックで呼ぶ。
+var ASK_CB = null;
+function askClose(){ q('askM').classList.add('hidden'); ASK_CB = null; }
+function askConfirm(message, onYes, opts){
+  opts = opts || {};
+  ASK_CB = onYes;
+  q('ask-title').textContent = opts.title || '確認';
+  q('ask-msg').textContent = message;
+  q('ask-input').classList.add('hidden');
+  var yes = q('ask-yes');
+  yes.textContent = opts.yes || '削除する';
+  yes.className = 'btn ' + (opts.primary ? 'btn-primary' : 'btn-danger');
+  q('askM').classList.remove('hidden');
+}
+function askPrompt(message, def, onOk, opts){
+  opts = opts || {};
+  var inp = q('ask-input');
+  ASK_CB = function(){
+    var v = String(inp.value || '').trim();
+    if(!v) return;   // 空欄はキャンセル扱い（従来の挙動と揃える）
+    onOk(v);
+  };
+  q('ask-title').textContent = opts.title || '編集';
+  q('ask-msg').textContent = message;
+  inp.classList.remove('hidden');
+  inp.value = def || '';
+  var yes = q('ask-yes');
+  yes.textContent = opts.yes || '変更する';
+  yes.className = 'btn btn-primary';
+  q('askM').classList.remove('hidden');
+  setTimeout(function(){ try{ inp.focus(); inp.select(); }catch(e){} }, 60);
+}
+on(q('ask-no'), 'click', askClose);
+on(q('ask-x'), 'click', askClose);
+on(q('askM'), 'click', function(e){ if(e.target.id === 'askM') askClose(); });
+on(q('ask-yes'), 'click', function(){ var cb = ASK_CB; askClose(); if(cb) cb(); });
+on(q('ask-input'), 'keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); q('ask-yes').click(); } });
 
 // 'yyyy/MM' → '2026年9月'
 function monthLabel(m){
@@ -1435,18 +1493,19 @@ on(q('d-body'), 'click', function(e){
 // 社長からのコメントを削除（社長モードのみ。サーバー側でも社長あいことばを再検証する）
 function deletePresComment(btn){
   if(!DETAIL || !PRES) return;
-  if(!confirm('この社長コメントを削除します。\n元に戻せません。よろしいですか？')) return;
   var row = Number(btn.getAttribute('data-row'));
   var id = DETAIL.id;
-  btn.disabled = true;
-  gsRun('deleteComment', id, row, PRES).then(function(res){
-    DETAIL = res.idea;
-    var idx = D.ideas.findIndex(function(i){ return String(i.id) === String(id); });
-    if(idx >= 0) D.ideas[idx] = res.idea;
-    q('d-body').innerHTML = detailHtml(res.idea, DETAIL_MATS, res.comments || [], DETAIL_POSTERS);
-    render();
-    toast('削除しました');
-  }).catch(function(e){ btn.disabled = false; toast(errMsg(e), true); });
+  askConfirm('この社長コメントを削除します。\n元に戻せません。よろしいですか？', function(){
+    btn.disabled = true;
+    gsRun('deleteComment', id, row, PRES).then(function(res){
+      DETAIL = res.idea;
+      var idx = D.ideas.findIndex(function(i){ return String(i.id) === String(id); });
+      if(idx >= 0) D.ideas[idx] = res.idea;
+      q('d-body').innerHTML = detailHtml(res.idea, DETAIL_MATS, res.comments || [], DETAIL_POSTERS);
+      render();
+      toast('削除しました');
+    }).catch(function(e){ btn.disabled = false; toast(errMsg(e), true); });
+  });
 }
 
 // 「見ました」チェック。誰でも自由にON/OFFできる共有フラグ。
@@ -1502,13 +1561,14 @@ function submitComment(kind, textId, nameId, btn){
 on(q('d-edit'), 'click', function(){ if(DETAIL){ q('detail').classList.add('hidden'); openForm(DETAIL.id); } });
 on(q('d-del'), 'click', function(){
   if(!DETAIL) return;
-  if(!confirm('「' + DETAIL.name + '」を削除します。\n\n材料・写真もすべて消え、元に戻せません。\n\n本当に削除しますか？')) return;
   var id = DETAIL.id;
-  gsRun('deleteIdea', id).then(function(){
-    q('detail').classList.add('hidden');
-    toast('削除しました');
-    return reload();
-  }).catch(function(e){ toast(errMsg(e), true); });
+  askConfirm('「' + DETAIL.name + '」を削除します。\n\n材料・写真もすべて消え、元に戻せません。\n\n本当に削除しますか？', function(){
+    gsRun('deleteIdea', id).then(function(){
+      q('detail').classList.add('hidden');
+      toast('削除しました');
+      return reload();
+    }).catch(function(e){ toast(errMsg(e), true); });
+  });
 });
 
 // ============================================================
@@ -2002,18 +2062,19 @@ on(q('storeList'), 'click', function(e){
   if(!b) return;
   var name = b.closest('.mrow').dataset.name;
   if(b.dataset.act === 'rename'){
-    var nn = prompt('新しい店舗名', name);
-    if(nn == null) return;
-    var st = (D.stores||[]).filter(function(x){ return x.name === name; })[0] || {};
-    gsRun('updateStore', name, { name:nn, order:st.order })
-      .then(function(r){
-        toast(r.renamed ? '変更しました（' + r.renamed + '件のアイデアも更新）' : '変更しました');
-        return reload();
-      }).catch(function(err){ toast(errMsg(err), true); });
+    askPrompt('新しい店舗名', name, function(nn){
+      var st = (D.stores||[]).filter(function(x){ return x.name === name; })[0] || {};
+      gsRun('updateStore', name, { name:nn, order:st.order })
+        .then(function(r){
+          toast(r.renamed ? '変更しました（' + r.renamed + '件のアイデアも更新）' : '変更しました');
+          return reload();
+        }).catch(function(err){ toast(errMsg(err), true); });
+    }, { title:'店舗名の編集' });
   }else{
-    if(!confirm('店舗「' + name + '」を削除しますか？')) return;
-    gsRun('deleteStore', name).then(function(){ toast('削除しました'); return reload(); })
-      .catch(function(err){ toast(errMsg(err), true); });
+    askConfirm('店舗「' + name + '」を削除しますか？', function(){
+      gsRun('deleteStore', name).then(function(){ toast('削除しました'); return reload(); })
+        .catch(function(err){ toast(errMsg(err), true); });
+    });
   }
 });
 on(q('st-add'), 'click', function(){
@@ -2101,13 +2162,15 @@ on(q('mm-save'), 'click', function(){
 });
 on(q('mm-del'), 'click', function(){
   if(!MM_EDIT) return;
-  if(!confirm('材料「' + MM_EDIT + '」をマスタから削除しますか？\n（過去のレシピに入力済みの材料名はそのまま残ります）')) return;
-  gsRun('deleteMaterial', MM_EDIT).then(function(list){
-    D.materialMasters = list || []; buildMMAP();
-    renderMmList(); renderMaterialDatalist();
-    q('mmM').classList.add('hidden');
-    toast('削除しました');
-  }).catch(function(e){ toast(errMsg(e), true); });
+  var target = MM_EDIT;
+  askConfirm('材料「' + target + '」をマスタから削除しますか？\n（過去のレシピに入力済みの材料名はそのまま残ります）', function(){
+    gsRun('deleteMaterial', target).then(function(list){
+      D.materialMasters = list || []; buildMMAP();
+      renderMmList(); renderMaterialDatalist();
+      q('mmM').classList.add('hidden');
+      toast('削除しました');
+    }).catch(function(e){ toast(errMsg(e), true); });
+  });
 });
 
 function renderCatList(){
@@ -2127,15 +2190,16 @@ on(q('catList'), 'click', function(e){
   if(!b) return;
   var name = b.closest('.mrow').dataset.name;
   if(b.dataset.act === 'rename'){
-    var nn = prompt('新しいカテゴリ名（付いている全アイデアに反映されます）', name);
-    if(nn == null) return;
-    gsRun('renameCategory', name, nn)
-      .then(function(r){ toast(r.renamed ? '変更しました（' + r.renamed + '件のアイデアに反映）' : '変更しました'); return reload(); })
-      .catch(function(err){ toast(errMsg(err), true); });
+    askPrompt('新しいカテゴリ名（付いている全アイデアに反映されます）', name, function(nn){
+      gsRun('renameCategory', name, nn)
+        .then(function(r){ toast(r.renamed ? '変更しました（' + r.renamed + '件のアイデアに反映）' : '変更しました'); return reload(); })
+        .catch(function(err){ toast(errMsg(err), true); });
+    }, { title:'カテゴリ名の編集' });
   }else{
-    if(!confirm('カテゴリ「' + name + '」を削除しますか？')) return;
-    gsRun('deleteCategory', name).then(function(){ toast('削除しました'); return reload(); })
-      .catch(function(err){ toast(errMsg(err), true); });
+    askConfirm('カテゴリ「' + name + '」を削除しますか？', function(){
+      gsRun('deleteCategory', name).then(function(){ toast('削除しました'); return reload(); })
+        .catch(function(err){ toast(errMsg(err), true); });
+    });
   }
 });
 on(q('ct-add'), 'click', function(){
@@ -2169,22 +2233,23 @@ on(q('tagList'), 'click', function(e){
   if(!b) return;
   var name = b.closest('.mrow').dataset.name;
   if(b.dataset.act === 'rename'){
-    var nn = prompt('新しいタグ名（付いている全アイデアに反映されます）', name);
-    if(nn == null) return;
-    gsRun('renameTag', name, nn)
-      .then(function(r){
-        toast(r.renamed ? '変更しました（' + r.renamed + '件のアイデアに反映）' : '変更しました');
-        return reload();
-      })
-      .catch(function(err){ toast(errMsg(err), true); });
+    askPrompt('新しいタグ名（付いている全アイデアに反映されます）', name, function(nn){
+      gsRun('renameTag', name, nn)
+        .then(function(r){
+          toast(r.renamed ? '変更しました（' + r.renamed + '件のアイデアに反映）' : '変更しました');
+          return reload();
+        })
+        .catch(function(err){ toast(errMsg(err), true); });
+    }, { title:'タグ名の編集' });
   }else{
-    if(!confirm('タグ「' + name + '」を削除しますか？\n付いているアイデアからも外れます。')) return;
-    gsRun('deleteTag', name)
-      .then(function(r){
-        toast(r.removed ? '削除しました（' + r.removed + '件から除去）' : '削除しました');
-        return reload();
-      })
-      .catch(function(err){ toast(errMsg(err), true); });
+    askConfirm('タグ「' + name + '」を削除しますか？\n付いているアイデアからも外れます。', function(){
+      gsRun('deleteTag', name)
+        .then(function(r){
+          toast(r.removed ? '削除しました（' + r.removed + '件から除去）' : '削除しました');
+          return reload();
+        })
+        .catch(function(err){ toast(errMsg(err), true); });
+    });
   }
 });
 on(q('tg-add'), 'click', function(){
@@ -2260,12 +2325,14 @@ on(q('posterFormArea'), 'click', function(e){
     renderPosterFormArea();
     return;
   }
-  if(!confirm('このポスターを削除しますか？')) return;
-  gsRun('deletePoster', b.dataset.id).then(function(list){
-    FORM.posters = list || [];
-    renderPosterFormArea();
-    toast('削除しました');
-  }).catch(function(err){ toast(errMsg(err), true); });
+  var pid = b.dataset.id;
+  askConfirm('このポスターを削除しますか？', function(){
+    gsRun('deletePoster', pid).then(function(list){
+      FORM.posters = list || [];
+      renderPosterFormArea();
+      toast('削除しました');
+    }).catch(function(err){ toast(errMsg(err), true); });
+  });
 });
 
 // 新規商品の保存後、手元に溜めたポスターを順に登録する
