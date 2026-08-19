@@ -27,6 +27,16 @@ clasp redeploy AKfycbyILDDp_HQT-joelI6zTJHQddsRh0BiI9TRqHX9B7kGQRO5i-Xumb7dK2GU5
 git は `main` に push（コミット者 `gyumaru <info@gyumaru-food.com>`、末尾に Co-Authored-By: Claude）。
 clasp の認証はときどき切れる（`invalid_grant / invalid_rapt`）→ **ユーザーに `clasp login` を依頼**（Claudeは実行不可）。
 
+### 共同編集（複数人・複数PCで触るとき）
+社長とオーナーが**同じGoogleアカウント（info@gyumaru-food.com）**・同じGitHub（gyumaru1978）で作業する。
+コード共有は GitHub、反映は clasp。どのPCからデプロイしても公開アプリは同じアカウントで動く（権限問題なし）。
+- **別PCの初回準備**（1回だけ）: リポジトリを `git clone` → `npm i -g @google/clasp` → `clasp login`（同アカウント）
+  → `.clasp.json` を手で作成（Git管理外）。中身は `scriptId=170-9kAqJqQ_-04zO7J9A8Z6c1wYcUchmmK-5QbUa1ezKkcSN72OZHrgq` /
+  `rootDir=""` / `parentId=14aEoP1eeF4LrClVLxgpiUiqQDEfA2cWde5aRYFnnFnI`。
+- **毎回のルール**: ①編集前に必ず `git pull` ②直したら `clasp push --force`＋`clasp redeploy`（上のデプロイ手順）と
+  `git push` の両方 ③**同時にデプロイしない**（`clasp push --force` は今の中身で丸ごと上書き→片方の変更が消える）。
+- 迷ったら最終デプロイ担当を1人に固定する。認証切れは各PCで `clasp login`。
+
 ### あいことば（Script Properties／ブラウザでのみ設定可）
 - `APP_PASSCODE` … 全員共通のあいことば（未設定だと全操作拒否）
 - `PRESIDENT_PASSCODE` … 社長モード（社長コメント投稿の本人確認。投稿ごとにサーバー再検証）
