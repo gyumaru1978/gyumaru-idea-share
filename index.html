@@ -428,6 +428,36 @@ img{max-width:100%;display:block}
 .spin{display:inline-block;width:1.1rem;height:1.1rem;border:2px solid var(--line);border-top-color:var(--brand);
   border-radius:999px;animation:sp .7s linear infinite;vertical-align:-.2rem;margin-right:.4rem}
 @keyframes sp{to{transform:rotate(360deg)}}
+
+/* ===== 印刷（レシピシート A4 1枚） =====
+   画面では非表示。印刷時は #printArea 以外を全部隠し、A4縦に収まる白黒中心のレイアウトで刷る */
+#printArea{display:none}
+@media print{
+  @page{size:A4 portrait;margin:11mm}
+  body>*:not(#printArea){display:none !important}
+  body{background:#fff}
+  #printArea{display:block;color:#111;font-family:inherit}
+  #printArea .p-title{font-size:16pt;font-weight:800;line-height:1.3}
+  #printArea .p-catch{font-size:10.5pt;color:#333;margin-top:1mm}
+  #printArea .p-meta{font-size:8.5pt;color:#444;margin:2mm 0 4mm;padding-bottom:2mm;border-bottom:2px solid #111}
+  #printArea .p-cols{display:flex;gap:6mm;align-items:flex-start}
+  #printArea .p-l{width:46%;flex:0 0 auto}
+  #printArea .p-r{flex:1;min-width:0}
+  #printArea .p-sec{margin-bottom:4mm}
+  #printArea h2{font-size:10.5pt;font-weight:800;border-bottom:1px solid #555;padding-bottom:.8mm;margin:0 0 2mm}
+  #printArea .p-photo{width:100%;max-height:50mm;object-fit:cover;border-radius:1.5mm;margin-bottom:3mm}
+  #printArea table{width:100%;border-collapse:collapse;font-size:8.8pt}
+  #printArea th,#printArea td{border:.4pt solid #888;padding:.9mm 1.6mm;text-align:left;vertical-align:top}
+  #printArea th{background:#eee;font-weight:700}
+  #printArea th.r,#printArea td.r{text-align:right;white-space:nowrap}
+  #printArea .p-cost{display:flex;flex-wrap:wrap;gap:1.5mm 5mm;font-size:8.8pt;margin-top:2mm}
+  #printArea .p-cost b{font-size:10pt;margin-left:1mm}
+  #printArea ol{margin:0;padding-left:5mm}
+  #printArea ol li{font-size:9.5pt;line-height:1.6;margin-bottom:1.4mm}
+  #printArea .p-plain{font-size:9pt;line-height:1.6;white-space:pre-wrap}
+  #printArea .p-foot{margin-top:4mm;padding-top:1.5mm;border-top:.4pt solid #888;
+    font-size:7.5pt;color:#555;text-align:right}
+}
 </style>
 </head>
 <body>
@@ -730,6 +760,7 @@ img{max-width:100%;display:block}
     </div>
     <div class="mbody" id="d-body"></div>
     <div class="mfoot">
+      <button id="d-print" class="btn btn-line" style="flex:0 0 auto">印刷</button>
       <button id="d-status" class="btn btn-line">ステータス変更</button>
       <button id="d-edit" class="btn btn-primary">編集</button>
       <button id="d-del" class="btn btn-danger" style="flex:0 0 auto">削除</button>
@@ -826,6 +857,10 @@ img{max-width:100%;display:block}
 </div>
 
 <div id="toast"></div>
+
+<!-- 印刷用のレシピシート（A4 1枚）。印刷ボタンでここに中身を組み立て、
+     @media print で他を全部隠してこれだけを刷る -->
+<div id="printArea"></div>
 
 <!-- ========== 確認・入力ダイアログ ==========
      GASの埋め込みiframe内（特にスマホ）では標準の confirm()/prompt() がブロックされて
@@ -1719,6 +1754,89 @@ function submitComment(kind, textId, nameId, btn){
     .catch(function(e){ toast(errMsg(e), true); })
     .then(function(){ btn.disabled = false; btn.textContent = orig; });
 }
+
+// ---- 印刷（レシピシート A4 1枚） ----
+// #printArea に印刷用レイアウトを組み立ててから window.print()。
+// @media print で他が全部隠れるので、詳細モーダルを開いたまま刷れる
+function printRecipe(){
+  if(!DETAIL) return;
+  var i = DETAIL, mats = DETAIL_MATS || [];
+  var h = '<div class="p-title">' + esc(i.name) + '</div>';
+  if(i.catch) h += '<div class="p-catch">' + esc(i.catch) + '</div>';
+
+  var meta = [];
+  if((i.categories||[]).length) meta.push(i.categories.join('・'));
+  if((i.tags||[]).length) meta.push(i.tags.map(function(t){ return '#' + t; }).join(' '));
+  if(i.store) meta.push('提案店舗：' + i.store);
+  if(i.date) meta.push('提案日：' + i.date);
+  meta.push('ステータス：' + i.status);
+  h += '<div class="p-meta">' + esc(meta.join('　')) + '</div>';
+
+  h += '<div class="p-cols"><div class="p-l">';
+  if(i.photo1) h += '<img class="p-photo" src="' + esc(photoUrl(i.photo1)) + '" alt="">';
+
+  // 材料と原価（左列）
+  h += '<div class="p-sec"><h2>材料</h2>';
+  if(mats.length){
+    h += '<table><tr><th>材料名</th><th class="r">数量</th><th class="r">単価</th><th class="r">金額</th></tr>' +
+      mats.map(function(m){
+        return '<tr><td>' + esc(m.name) + '</td>' +
+          '<td class="r">' + (m.qty || '') + ' ' + esc(m.unit||'') + '</td>' +
+          '<td class="r">' + (m.unitPrice ? yen(m.unitPrice) : '') + '</td>' +
+          '<td class="r">' + (m.amount ? yen(m.amount) : '') + '</td></tr>';
+      }).join('') + '</table>';
+  }else{
+    h += '<div class="p-plain">（材料未登録）</div>';
+  }
+  h += '<div class="p-cost">' +
+       '<span>原価合計<b>' + yen(i.cost) + '</b></span>' +
+       '<span>出来上がり<b>' + (i.yieldQty || '—') + esc(i.yieldUnit||'') + '</b></span>' +
+       '<span>1つあたり<b>' + (i.costPer ? yen(i.costPer) : '—') + '</b></span>' +
+       '<span>想定売価<b>' + (i.price ? yen(i.price) : '—') + '</b></span>' +
+       '<span>原価率<b>' + (i.costRate ? i.costRate + '%' : '—') + '</b></span></div></div>';
+
+  // アレルギー・栄養・保存（左列・詳細画面と同じ集計）
+  var allAl = autoAllergens(mats).slice();
+  (i.allergens||[]).forEach(function(a){ if(allAl.indexOf(a) < 0) allAl.push(a); });
+  if(allAl.length){
+    h += '<div class="p-sec"><h2>アレルギー</h2><div class="p-plain">' + allAl.map(esc).join('・') + '</div></div>';
+  }
+  var an = autoNutrition(mats, i.yieldQty);
+  var manual = { kcal:i.kcal, protein:i.protein, fat:i.fat, carb:i.carb, salt:i.salt };
+  var labels = { kcal:['エネルギー','kcal'], protein:['たんぱく質','g'], fat:['脂質','g'], carb:['炭水化物','g'], salt:['食塩相当量','g'] };
+  var nutRows = NUT_KEYS.map(function(k){
+    var v = (an.per[k] || 0) + (Number(manual[k]) || 0);
+    v = Math.round(v * 10) / 10;
+    return { label:labels[k][0], val:v, unit:labels[k][1], has:(an.any || (manual[k] !== '' && manual[k] != null)) };
+  }).filter(function(n){ return n.has; });
+  if(nutRows.length){
+    h += '<div class="p-sec"><h2>栄養（1つあたり）</h2><div class="p-plain">' +
+      nutRows.map(function(n){ return n.label + ' ' + n.val + n.unit; }).join('　') + '</div></div>';
+  }
+  if(i.storage || i.bestBefore){
+    h += '<div class="p-sec"><h2>保存</h2><div class="p-plain">' +
+      esc([i.storage, i.bestBefore ? '賞味期限：' + i.bestBefore : ''].filter(Boolean).join('　')) + '</div></div>';
+  }
+  h += '</div><div class="p-r">';
+
+  // 作り方（右列）
+  var steps = String(i.steps||'').split('\n').map(function(s){ return s.trim(); }).filter(Boolean);
+  h += '<div class="p-sec"><h2>作り方</h2>' +
+       (steps.length ? '<ol>' + steps.map(function(s){ return '<li>' + esc(s) + '</li>'; }).join('') + '</ol>'
+                     : '<div class="p-plain">（作り方未登録）</div>') + '</div>';
+  if(i.memo){
+    h += '<div class="p-sec"><h2>検討メモ</h2><div class="p-plain">' + esc(i.memo) + '</div></div>';
+  }
+  h += '</div></div>';
+
+  h += '<div class="p-foot">ぎゅう丸 新商品アイデア共有　' + esc(i.id) +
+       (i.updatedAt ? '　最終更新 ' + esc(i.updatedAt) : '') + '</div>';
+
+  q('printArea').innerHTML = h;
+  // 写真の読み込みを一拍待ってから印刷ダイアログを出す（詳細画面で表示済みなら即キャッシュが効く）
+  setTimeout(function(){ window.print(); }, 150);
+}
+on(q('d-print'), 'click', printRecipe);
 
 on(q('d-edit'), 'click', function(){ if(DETAIL){ q('detail').classList.add('hidden'); openForm(DETAIL.id); } });
 on(q('d-del'), 'click', function(){
