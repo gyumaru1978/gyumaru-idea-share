@@ -430,33 +430,42 @@ img{max-width:100%;display:block}
 @keyframes sp{to{transform:rotate(360deg)}}
 
 /* ===== 印刷（レシピシート A4 1枚） =====
-   画面では非表示。印刷時は #printArea 以外を全部隠し、A4縦に収まる白黒中心のレイアウトで刷る */
+   画面では非表示。印刷時は #printArea 以外を全部隠す。
+   記載が無くても常にA4縦1枚ぶんの「枠」が出る固定レイアウト（空欄は手書き用の罫線・空枠になる）。
+   全体を高さ273mm（A4 297mm−余白22mm−誤差）のflex縦積みにし、各枠が面積を分け合う */
 #printArea{display:none}
 @media print{
   @page{size:A4 portrait;margin:11mm}
   body>*:not(#printArea){display:none !important}
   body{background:#fff}
-  #printArea{display:block;color:#111;font-family:inherit}
-  #printArea .p-title{font-size:16pt;font-weight:800;line-height:1.3}
-  #printArea .p-catch{font-size:10.5pt;color:#333;margin-top:1mm}
-  #printArea .p-meta{font-size:8.5pt;color:#444;margin:2mm 0 4mm;padding-bottom:2mm;border-bottom:2px solid #111}
-  #printArea .p-cols{display:flex;gap:6mm;align-items:flex-start}
-  #printArea .p-l{width:46%;flex:0 0 auto}
-  #printArea .p-r{flex:1;min-width:0}
-  #printArea .p-sec{margin-bottom:4mm}
-  #printArea h2{font-size:10.5pt;font-weight:800;border-bottom:1px solid #555;padding-bottom:.8mm;margin:0 0 2mm}
-  #printArea .p-photo{width:100%;max-height:50mm;object-fit:cover;border-radius:1.5mm;margin-bottom:3mm}
-  #printArea table{width:100%;border-collapse:collapse;font-size:8.8pt}
-  #printArea th,#printArea td{border:.4pt solid #888;padding:.9mm 1.6mm;text-align:left;vertical-align:top}
+  #printArea{display:flex;flex-direction:column;height:273mm;color:#111;font-family:inherit}
+  #printArea .p-head{flex:0 0 auto;border:1pt solid #333;border-radius:1.2mm;padding:2.5mm 3mm;margin-bottom:3mm}
+  #printArea .p-title{font-size:15pt;font-weight:800;line-height:1.3;min-height:7mm}
+  #printArea .p-catch{font-size:10pt;color:#333;min-height:5mm;margin-top:.5mm}
+  #printArea .p-meta{font-size:8.5pt;color:#444;margin-top:1.5mm;padding-top:1.5mm;border-top:.4pt solid #999}
+  #printArea .p-cols{flex:1;display:flex;gap:4mm;min-height:0;margin-bottom:2.5mm}
+  /* 左＝レシピ（写真・材料・原価・アレルギー等）、右＝作り方。ページを縦半分で二分する */
+  #printArea .p-l{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:3mm;min-height:0}
+  #printArea .p-r{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:3mm;min-height:0}
+  #printArea .p-box{border:.5pt solid #555;border-radius:1.2mm;padding:2mm 2.5mm;overflow:hidden}
+  #printArea h2{font-size:9.5pt;font-weight:800;border-bottom:.6pt solid #555;padding-bottom:.8mm;margin:0 0 1.6mm}
+  #printArea .p-photo-box{height:46mm;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+    color:#bbb;font-size:9pt;padding:1.5mm}
+  #printArea .p-photo-box img{width:100%;height:100%;object-fit:cover;border-radius:1mm}
+  #printArea .p-mat{flex:1;min-height:0}
+  #printArea table{width:100%;border-collapse:collapse;font-size:8.6pt}
+  #printArea th,#printArea td{border:.4pt solid #888;padding:.8mm 1.4mm;text-align:left;vertical-align:top;height:4.8mm}
   #printArea th{background:#eee;font-weight:700}
   #printArea th.r,#printArea td.r{text-align:right;white-space:nowrap}
-  #printArea .p-cost{display:flex;flex-wrap:wrap;gap:1.5mm 5mm;font-size:8.8pt;margin-top:2mm}
-  #printArea .p-cost b{font-size:10pt;margin-left:1mm}
+  #printArea .p-cost{display:flex;flex-wrap:wrap;gap:1mm 4mm;font-size:8.6pt}
+  #printArea .p-cost b{font-size:9.5pt;margin-left:.8mm}
+  #printArea .p-small{font-size:8.6pt;line-height:1.6;white-space:pre-wrap}
+  #printArea .p-blank{display:inline-block;min-width:10mm;border-bottom:.4pt solid #999;text-align:center}
+  #printArea .p-steps{flex:1.7;min-height:0}
+  #printArea .p-memo{flex:1;min-height:0}
   #printArea ol{margin:0;padding-left:5mm}
-  #printArea ol li{font-size:9.5pt;line-height:1.6;margin-bottom:1.4mm}
-  #printArea .p-plain{font-size:9pt;line-height:1.6;white-space:pre-wrap}
-  #printArea .p-foot{margin-top:4mm;padding-top:1.5mm;border-top:.4pt solid #888;
-    font-size:7.5pt;color:#555;text-align:right}
+  #printArea ol li{font-size:9.3pt;line-height:1.55;min-height:6.2mm;margin-bottom:.8mm;border-bottom:.3pt solid #ccc}
+  #printArea .p-foot{flex:0 0 auto;font-size:7.5pt;color:#555;text-align:right}
 }
 </style>
 </head>
@@ -1761,78 +1770,88 @@ function submitComment(kind, textId, nameId, btn){
 function printRecipe(){
   if(!DETAIL) return;
   var i = DETAIL, mats = DETAIL_MATS || [];
-  var h = '<div class="p-title">' + esc(i.name) + '</div>';
-  if(i.catch) h += '<div class="p-catch">' + esc(i.catch) + '</div>';
-
-  var meta = [];
-  if((i.categories||[]).length) meta.push(i.categories.join('・'));
-  if((i.tags||[]).length) meta.push(i.tags.map(function(t){ return '#' + t; }).join(' '));
-  if(i.store) meta.push('提案店舗：' + i.store);
-  if(i.date) meta.push('提案日：' + i.date);
-  meta.push('ステータス：' + i.status);
-  h += '<div class="p-meta">' + esc(meta.join('　')) + '</div>';
-
-  h += '<div class="p-cols"><div class="p-l">';
-  if(i.photo1) h += '<img class="p-photo" src="' + esc(photoUrl(i.photo1)) + '" alt="">';
-
-  // 材料と原価（左列）
-  h += '<div class="p-sec"><h2>材料</h2>';
-  if(mats.length){
-    h += '<table><tr><th>材料名</th><th class="r">数量</th><th class="r">単価</th><th class="r">金額</th></tr>' +
-      mats.map(function(m){
-        return '<tr><td>' + esc(m.name) + '</td>' +
-          '<td class="r">' + (m.qty || '') + ' ' + esc(m.unit||'') + '</td>' +
-          '<td class="r">' + (m.unitPrice ? yen(m.unitPrice) : '') + '</td>' +
-          '<td class="r">' + (m.amount ? yen(m.amount) : '') + '</td></tr>';
-      }).join('') + '</table>';
-  }else{
-    h += '<div class="p-plain">（材料未登録）</div>';
+  // 空欄は手書き用の下線にする（記載が無くても枠と欄は必ず出す）
+  function bl(v, suf){
+    return (v ? esc(String(v)) : '<span class="p-blank">&nbsp;</span>') + (suf || '');
   }
-  h += '<div class="p-cost">' +
-       '<span>原価合計<b>' + yen(i.cost) + '</b></span>' +
-       '<span>出来上がり<b>' + (i.yieldQty || '—') + esc(i.yieldUnit||'') + '</b></span>' +
-       '<span>1つあたり<b>' + (i.costPer ? yen(i.costPer) : '—') + '</b></span>' +
-       '<span>想定売価<b>' + (i.price ? yen(i.price) : '—') + '</b></span>' +
-       '<span>原価率<b>' + (i.costRate ? i.costRate + '%' : '—') + '</b></span></div></div>';
 
-  // アレルギー・栄養・保存（左列・詳細画面と同じ集計）
+  var h = '<div class="p-head">' +
+    '<div class="p-title">' + esc(i.name || '') + '</div>' +
+    '<div class="p-catch">' + esc(i.catch || '') + '</div>' +
+    '<div class="p-meta">' + esc([
+      '分類：' + ((i.categories||[]).join('・') || '　　　'),
+      'タグ：' + ((i.tags||[]).map(function(t){ return '#' + t; }).join(' ') || '　　　'),
+      '提案店舗：' + (i.store || '　　　'),
+      '提案日：' + (i.date || '　　　'),
+      'ステータス：' + (i.status || '')
+    ].join('　')) + '</div></div>';
+
+  // ---- 左＝レシピ（写真・材料・原価・アレルギー・栄養・保存） ----
+  h += '<div class="p-cols"><div class="p-l">';
+  h += '<div class="p-box p-photo-box">' +
+       (i.photo1 ? '<img src="' + esc(photoUrl(i.photo1)) + '" alt="">' : '写真') + '</div>';
+
+  // 材料表：記載が少なくても12行ぶんの空欄行を出す（手書きできる）
+  var MROWS = Math.max(mats.length, 12);
+  var rows = '';
+  for(var r = 0; r < MROWS; r++){
+    var m = mats[r];
+    rows += '<tr><td>' + (m ? esc(m.name) : '') + '</td>' +
+      '<td class="r">' + (m ? (m.qty || '') + ' ' + esc(m.unit||'') : '') + '</td>' +
+      '<td class="r">' + (m && m.unitPrice ? yen(m.unitPrice) : '') + '</td>' +
+      '<td class="r">' + (m && m.amount ? yen(m.amount) : '') + '</td></tr>';
+  }
+  h += '<div class="p-box p-mat"><h2>材料</h2>' +
+       '<table><tr><th>材料名</th><th class="r">数量</th><th class="r">単価</th><th class="r">金額</th></tr>' +
+       rows + '</table></div>';
+
+  h += '<div class="p-box"><h2>原価</h2><div class="p-cost">' +
+       '<span>原価合計<b>' + bl(i.cost ? yen(i.cost) : '') + '</b></span>' +
+       '<span>出来上がり<b>' + bl(i.yieldQty ? i.yieldQty + (i.yieldUnit||'') : '') + '</b></span>' +
+       '<span>1つあたり<b>' + bl(i.costPer ? yen(i.costPer) : '') + '</b></span>' +
+       '<span>想定売価<b>' + bl(i.price ? yen(i.price) : '') + '</b></span>' +
+       '<span>原価率<b>' + bl(i.costRate ? i.costRate + '%' : '') + '</b></span></div></div>';
+
+  // アレルギー・栄養・保存（詳細画面と同じ集計。無記載でも枠は出す）
   var allAl = autoAllergens(mats).slice();
   (i.allergens||[]).forEach(function(a){ if(allAl.indexOf(a) < 0) allAl.push(a); });
-  if(allAl.length){
-    h += '<div class="p-sec"><h2>アレルギー</h2><div class="p-plain">' + allAl.map(esc).join('・') + '</div></div>';
-  }
+  h += '<div class="p-box" style="min-height:12mm"><h2>アレルギー</h2><div class="p-small">' +
+       (allAl.length ? allAl.map(esc).join('・') : '&nbsp;') + '</div></div>';
+
   var an = autoNutrition(mats, i.yieldQty);
   var manual = { kcal:i.kcal, protein:i.protein, fat:i.fat, carb:i.carb, salt:i.salt };
   var labels = { kcal:['エネルギー','kcal'], protein:['たんぱく質','g'], fat:['脂質','g'], carb:['炭水化物','g'], salt:['食塩相当量','g'] };
-  var nutRows = NUT_KEYS.map(function(k){
+  var nut = NUT_KEYS.map(function(k){
     var v = (an.per[k] || 0) + (Number(manual[k]) || 0);
     v = Math.round(v * 10) / 10;
-    return { label:labels[k][0], val:v, unit:labels[k][1], has:(an.any || (manual[k] !== '' && manual[k] != null)) };
-  }).filter(function(n){ return n.has; });
-  if(nutRows.length){
-    h += '<div class="p-sec"><h2>栄養（1つあたり）</h2><div class="p-plain">' +
-      nutRows.map(function(n){ return n.label + ' ' + n.val + n.unit; }).join('　') + '</div></div>';
-  }
-  if(i.storage || i.bestBefore){
-    h += '<div class="p-sec"><h2>保存</h2><div class="p-plain">' +
-      esc([i.storage, i.bestBefore ? '賞味期限：' + i.bestBefore : ''].filter(Boolean).join('　')) + '</div></div>';
-  }
-  h += '</div><div class="p-r">';
+    var has = an.any || (manual[k] !== '' && manual[k] != null);
+    return labels[k][0] + ' ' + bl(has ? v : '', labels[k][1]);
+  }).join('　');
+  h += '<div class="p-box"><h2>栄養（1つあたり）</h2><div class="p-small">' + nut + '</div></div>';
 
-  // 作り方（右列）
+  h += '<div class="p-box"><h2>保存</h2><div class="p-small">保存方法：' + bl(i.storage) +
+       '　賞味期限：' + bl(i.bestBefore) + '</div></div>';
+  h += '</div>';
+
+  // ---- 右＝作り方（ページの縦半分をまるごと使う） ----
   var steps = String(i.steps||'').split('\n').map(function(s){ return s.trim(); }).filter(Boolean);
-  h += '<div class="p-sec"><h2>作り方</h2>' +
-       (steps.length ? '<ol>' + steps.map(function(s){ return '<li>' + esc(s) + '</li>'; }).join('') + '</ol>'
-                     : '<div class="p-plain">（作り方未登録）</div>') + '</div>';
-  if(i.memo){
-    h += '<div class="p-sec"><h2>検討メモ</h2><div class="p-plain">' + esc(i.memo) + '</div></div>';
+  var LINES = Math.max(steps.length, 14);   // 記載が無くても14行の罫線を出す
+  var lis = '';
+  for(var k2 = 0; k2 < LINES; k2++){
+    lis += '<li>' + (steps[k2] ? esc(steps[k2]) : '&nbsp;') + '</li>';
   }
-  h += '</div></div>';
+  h += '<div class="p-r">' +
+       '<div class="p-box p-steps"><h2>作り方</h2><ol>' + lis + '</ol></div>' +
+       '<div class="p-box p-memo"><h2>検討メモ</h2><div class="p-small">' + esc(i.memo || '') + '</div></div>' +
+       '</div></div>';
 
   h += '<div class="p-foot">ぎゅう丸 新商品アイデア共有　' + esc(i.id) +
        (i.updatedAt ? '　最終更新 ' + esc(i.updatedAt) : '') + '</div>';
 
-  q('printArea').innerHTML = h;
+  var area = q('printArea');
+  area.innerHTML = h;
+  // 材料や工程が既定の枠を超えるときだけ固定高さを外す（1枚に収まらない量ならはみ出しより2枚目を優先）
+  area.style.height = (mats.length > 14 || steps.length > 18) ? 'auto' : '';
   // 写真の読み込みを一拍待ってから印刷ダイアログを出す（詳細画面で表示済みなら即キャッシュが効く）
   setTimeout(function(){ window.print(); }, 150);
 }
